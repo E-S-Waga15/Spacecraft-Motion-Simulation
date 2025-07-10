@@ -5,7 +5,8 @@
   "main": "main.js",
   "scripts": {
     "start": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "postinstall": "chmod +x ./node_modules/.bin/vite" 
   },
   "dependencies": {
     "three": "^0.162.0"
@@ -13,4 +14,4 @@
   "devDependencies": {
     "vite": "^5.1.4"
   }
-} 
+}
