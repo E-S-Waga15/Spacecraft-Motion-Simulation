@@ -17,7 +17,7 @@ export class FreeLookCamera { // تم تغيير اسم الكلاس هنا
         this.roll = 0;  // Side tilt angle
 
         // Camera position
-        this.position = new THREE.Vector3(-4, this.radius + this.height, 1);
+        this.position = new THREE.Vector3(-8, this.radius + this.height, 1);
         this.lookAt = new THREE.Vector3(0, this.radius + this.height, -1);
 
         // Setup camera with adjusted near and far planes

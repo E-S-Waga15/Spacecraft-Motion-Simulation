@@ -1,3 +1,5 @@
+// src/MainScene.js
+
 import * as THREE from "three";
 import { Earth } from "../objects/Earth";
 import { FreeLookCamera } from "../camera/FreeLookCamera";
@@ -7,6 +9,8 @@ import { SpaceShuttle } from "../objects/SpaceShuttle";
 import { WaterObject } from "../objects/Water";
 import { Units } from "../utils/Units";
 import { ShuttlePhysics } from "../physics/ShuttlePhysics";
+import { PhysicsConstants } from "../constants/PhysicsConstants";
+import { ShuttleStages } from "../constants/ShuttleStages";
 
 export class MainScene {
   constructor() {
@@ -16,13 +20,13 @@ export class MainScene {
       antialias: true,
     });
     this.isInitialized = false;
-    this.shuttlePhysics = new ShuttlePhysics(); // --- إدارة الكاميرات ---
 
-    this.freeLookCamera = null; // الكاميرا اليدوية الحرة
-    this.shuttleTrackingCamera = null; // كاميرا تتبع المكوك
-    this.activeCamera = null; // الكاميرا النشطة حاليًا (كائن THREE.Camera)
+    this.shuttlePhysics = new ShuttlePhysics();
+    
+    this.freeLookCamera = null;
+    this.shuttleTrackingCamera = null;
+    this.activeCamera = null; 
 
-    // --- جديد: متغير لتتبع ما إذا كان مفتاح المسافة مضغوطًا بالفعل لمنع التكرار السريع ---
     this.spacebarPressed = false;
 
     this.init();
@@ -30,14 +34,16 @@ export class MainScene {
 
   async init() {
     try {
-      // Setup renderer
       this.renderer.setSize(window.innerWidth, window.innerHeight);
       this.renderer.setPixelRatio(window.devicePixelRatio);
       this.renderer.shadowMap.enabled = true;
-      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Add ambient light
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+      const audioListener = new THREE.AudioListener();
+      this.scene.add(audioListener);
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
-      this.scene.add(ambientLight); // Add directional light (sun)
+      this.scene.add(ambientLight);
 
       const sunLight = new THREE.DirectionalLight(0xffffff, 1);
       sunLight.position.set(
@@ -50,54 +56,64 @@ export class MainScene {
       sunLight.shadow.mapSize.height = 2048;
       sunLight.shadow.camera.near = 0.5;
       sunLight.shadow.camera.far = Units.toProjectUnits(20000000);
-      this.scene.add(sunLight); // Add hemisphere light for better ambient lighting
+      this.scene.add(sunLight);
 
       const hemisphereLight = new THREE.HemisphereLight(
         0xffffff,
         0x444444,
         0.6
       );
-      this.scene.add(hemisphereLight); // Add Earth
+      this.scene.add(hemisphereLight);
 
       this.earth = new Earth();
-      this.scene.add(this.earth.getObject()); // تأكد أن Earth.js لديها getObject() // Add Water
+      this.scene.add(this.earth.getObject());
 
       this.water = new WaterObject(this.earth);
       const waterModel = this.water.getObject();
       if (waterModel) {
         this.scene.add(waterModel);
-      } // Add Launch Pad
+      }
 
       this.launchPad = new LaunchPad(this.earth);
       const launchPadModel = await this.launchPad.load();
       if (launchPadModel) {
         this.scene.add(launchPadModel);
-      } // Add Space Shuttle
+        this.shuttlePhysics.setLaunchPad(this.launchPad);
+      }
 
-      this.spaceShuttle = new SpaceShuttle(this.earth, this.shuttlePhysics);
-      const shuttleModel = await this.spaceShuttle.load();
+      // 🚀 الخطوة الرئيسية: تهيئة الكاميرات أولاً قبل SpaceShuttle
+      this.freeLookCamera = new FreeLookCamera(this.earth);
+      
+      // ✅ تمرير الكاميرا النشطة حالياً (FreeLookCamera) إلى SpaceShuttle constructor
+      this.spaceShuttle = new SpaceShuttle(
+        this.earth, 
+        this.shuttlePhysics, 
+        this.freeLookCamera.getCamera() 
+      ); 
+      this.spaceShuttle.setAudioListener(audioListener);
+      const shuttleModel = await this.spaceShuttle.load(); 
       if (shuttleModel) {
         this.scene.add(shuttleModel);
-      } // Add AxesHelper to visualize X (red), Y (green), Z (blue) axes
+      }
 
-      const axesHelper = new THREE.AxesHelper(Units.toProjectUnits(20)); // 20 meters long
-      this.scene.add(axesHelper); // --- تهيئة الكاميرات بعد تحميل المكوك والأرض ---
+      const axesHelper = new THREE.AxesHelper(Units.toProjectUnits(20));
+      this.scene.add(axesHelper);
 
-      this.freeLookCamera = new FreeLookCamera(this.earth); // كاميرا التحكم الحر
+      // الآن بعد تحميل shuttleModel وتهيئته، يمكننا إنشاء ShuttleTrackingCamera
+      // لأنها تحتاج إلى this.spaceShuttle.model
       this.shuttleTrackingCamera = new ShuttleTrackingCamera(
-        this.spaceShuttle.model
-      ); // كاميرا تتبع المكوك // تعيين الكاميرا الافتراضية عند البدء (الكاميرا الحرة)
+        this.spaceShuttle.model 
+      );
+
       this.activeCamera = this.freeLookCamera.getCamera();
-      this.freeLookCamera.setEnabled(true); // تمكين الكاميرا الحرة
-      this.shuttleTrackingCamera.setEnabled(false); // تعطيل كاميرا التتبع في البداية // إضافة مستمع لحدث تغيير حجم النافذة
+      this.freeLookCamera.setEnabled(true);
+      this.shuttleTrackingCamera.setEnabled(false);
 
-      window.addEventListener("resize", this.onWindowResize.bind(this)); // إضافة مستمع لحدث الضغط على المفاتيح للتبديل بين الكاميرات
+      window.addEventListener("resize", this.onWindowResize.bind(this));
       window.addEventListener("keydown", this.handleKeyDown.bind(this));
-      // --- جديد: إضافة مستمع لحدث تحرير المفتاح ---
-      window.addEventListener("keyup", this.handleKeyUp.bind(this)); // Set initialized flag
+      window.addEventListener("keyup", this.handleKeyUp.bind(this));
 
-      this.isInitialized = true; // Start animation loop
-
+      this.isInitialized = true;
       this.animate();
     } catch (error) {
       console.error("Error initializing scene:", error);
@@ -105,59 +121,62 @@ export class MainScene {
   }
 
   onWindowResize() {
-    // تحديث جميع الكاميرات عند تغيير حجم النافذة
     if (this.freeLookCamera) this.freeLookCamera.onWindowResize();
     if (this.shuttleTrackingCamera) this.shuttleTrackingCamera.onWindowResize();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-  } // دالة للتبديل بين الكاميرات
+  }
 
   toggleCamera() {
     if (this.activeCamera === this.freeLookCamera.getCamera()) {
-      // التبديل إلى كاميرا التتبع
       this.activeCamera = this.shuttleTrackingCamera.getCamera();
-      this.freeLookCamera.setEnabled(false); // تعطيل الكاميرا الحرة
-      this.shuttleTrackingCamera.setEnabled(true); // تمكين كاميرا التتبع
+      this.freeLookCamera.setEnabled(false);
+      this.shuttleTrackingCamera.setEnabled(true);
       console.log(
         "Switched to Shuttle Tracking Camera (Press '1' for Free-Look Camera)"
       );
     } else {
-      // التبديل إلى الكاميرا الحرة
       this.activeCamera = this.freeLookCamera.getCamera();
-      this.freeLookCamera.setEnabled(true); // تمكين الكاميرا الحرة
-      this.shuttleTrackingCamera.setEnabled(false); // تعطيل كاميرا التتبع
+      this.freeLookCamera.setEnabled(true);
+      this.shuttleTrackingCamera.setEnabled(false);
       console.log(
         "Switched to Free-Look Camera (Press '2' for Tracking Camera)"
       );
     }
+    // ✅ تحديث الكاميرا في SpaceShuttle عند تبديل الكاميرات
+    // هذا يضمن أن نظام الجسيمات يستخدم الكاميرا الصحيحة للفرز
+    if (this.spaceShuttle && this.spaceShuttle.camera !== this.activeCamera) {
+      this.spaceShuttle.camera = this.activeCamera;
+    }
   }
 
   handleKeyDown(event) {
-    // نستخدم event.code بدلاً من event.key ليكون أكثر موثوقية لمفاتيح الأرقام
+    // تحديث الكاميرا النشطة عند تغييرها
     if (event.code === "Digit1") {
-      // مفتاح 1 للكاميرا الحرة
       if (this.activeCamera !== this.freeLookCamera.getCamera()) {
         this.toggleCamera();
       }
     } else if (event.code === "Digit2") {
-      // مفتاح 2 لكاميرا التتبع
       if (this.activeCamera !== this.shuttleTrackingCamera.getCamera()) {
         this.toggleCamera();
       }
-    } // هنا يمكنك إضافة المزيد من معالجات المفاتيح إذا لزم الأمر
-    // --- جديد: منطق تدوير برج الإطلاق بمفتاح المسافة ---
-    if (event.code === "Space" && !this.spacebarPressed) {
-      this.spacebarPressed = true; // منع الدوران المتعدد
-      if (this.launchPad && this.launchPad.towerModel) { 
-        // الميلان 90 درجة للخلف (أو للأمام، حسب اتجاه الموديل)
-        // قد تحتاج لتجربة +90 أو -90 اعتماداً على اتجاه موديل البرج
-        this.launchPad.tiltTower(90); // تدوير 90 درجة (PI/2 راديان)
-      } else {
-        console.warn("Launch pad tower not available for rotation.");
+    }
+
+    if (
+      event.code === "Space" &&
+      !this.spacebarPressed &&
+      this.shuttlePhysics.stage === ShuttleStages.IDLE
+    ) {
+      console.log("MainScene: Spacebar pressed, initiating launch sequence.");
+      this.spacebarPressed = true;
+
+      this.shuttlePhysics.setStage(ShuttleStages.ENGINE_STARTUP);
+      if (this.spaceShuttle) {
+        this.spaceShuttle.toggleEngineEffects(true); // هذا مجرد سجل
+        this.spaceShuttle.playSounds(true); // بدء صوت المحركات
       }
     }
   }
 
-  // --- جديد: دالة لمعالجة تحرير المفتاح وإعادة تعيين spacebarPressed ---
   handleKeyUp(event) {
     if (event.code === "Space") {
       this.spacebarPressed = false;
@@ -170,33 +189,30 @@ export class MainScene {
     requestAnimationFrame(this.animate.bind(this));
 
     try {
-      const deltaTime = 1 / 60; // Fixed time step for physics (realistic speed) // Update Earth
+      const deltaTime = 1 / 60; // Fixed timestep for physics and updates
 
       if (this.earth) {
         this.earth.update();
-      } // Update Water if it exists
+      }
 
       if (this.water) {
         this.water.update();
-      } // Update Launch Pad if it exists
+      }
 
-      // تأكد من تمرير دوران الأرض الصحيح. إذا كانت rotationSpeed هي معدل الدوران،
-      // فستحتاج إلى استخدام rotation.y الفعلي لكائن الأرض للحصول على الموضع المطلق.
-         // Update Launch Pad (نمرر deltaTime هنا)
-         if (this.launchPad && this.earth && this.earth.getObject()) {
-            this.launchPad.update(this.earth.getObject().rotation.y, deltaTime); // <<<<<<<<<<<<<< هنا يتم تمرير deltaTime
-        }
+      if (this.launchPad && this.earth && this.earth.getObject()) {
+        this.launchPad.update(this.earth.getObject().rotation.y, deltaTime);
+      }
 
       if (this.spaceShuttle) {
         this.spaceShuttle.update(deltaTime);
-      } // تحديث الكاميرات (كلتاهما، لكن فقط الكاميرا النشطة ستؤثر على العرض)
+      }
 
       if (this.freeLookCamera) {
         this.freeLookCamera.update();
       }
       if (this.shuttleTrackingCamera) {
         this.shuttleTrackingCamera.update();
-      } // Render scene باستخدام الكاميرا النشطة
+      }
 
       this.renderer.render(this.scene, this.activeCamera);
     } catch (error) {
@@ -205,8 +221,5 @@ export class MainScene {
   }
 }
 
-// تهيئة وإطلاق مدير المشهد
 const sceneManager = new MainScene();
-
-// لجعل sceneManager متاحًا للـ HUD script في index.html
 window.scene = sceneManager;

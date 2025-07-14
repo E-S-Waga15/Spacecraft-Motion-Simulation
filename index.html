@@ -7,24 +7,30 @@
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap" rel="stylesheet">
     <style>
+      body {
+        margin: 0;
+        overflow: hidden; /* لمنع ظهور أشرطة التمرير إذا خرج شيء عن الحواف */
+      }
+      canvas {
+        display: block;
+      }
       .hud {
         position: absolute;
         top: 20px;
         right: 20px;
         display: flex;
         flex-direction: column;
-        gap: 0;
       }
       .hud-frame {
         border: 2px solid rgba(0, 255, 255, 0.5);
-        padding: 0 32px 28px 32px;
-        width: 370px;
+        padding: 0 20px 20px 20px; /* تقليل ال padding */
+        width: 280px; /* تصغير عرض اللوحة بشكل ملحوظ */
         
         background: linear-gradient(135deg, rgba(0,255,255,0.08) 0%, rgba(0,40,60,0.18) 100%);
         box-shadow: 0 0 18px rgba(0, 255, 255, 0.35);
         display: flex;
         flex-direction: column;
-        gap: 24px;
+        gap: 12px; /* تقليل ال gap بين الصفوف، وتوفير مساحة للزر */
         border-radius: 18px;
         overflow: hidden;
       }
@@ -32,79 +38,61 @@
         background: linear-gradient(90deg, rgba(0,255,255,0.18) 0%, rgba(0,180,255,0.25) 100%);
         color: #fff;
         text-shadow: 0 0 8px #0ff, 0 0 2px #0ff;
-        font-size: 22px;
+        font-size: 18px; /* تصغير حجم الخط */
         font-weight: bold;
-        letter-spacing: 2px;
-        padding: 18px 0 12px 0;
+        letter-spacing: 0.8px; /* تقليل تباعد الأحرف */
+        padding: 12px 0 8px 0; /* تقليل ال padding */
         text-align: center;
         border-bottom: 2px solid rgba(0,255,255,0.18);
         margin-bottom: 10px;
         position: relative;
       }
       .rocket-status-label {
-        font-size: 15px;
+        font-size: 13px; /* تصغير حجم الخط */
         font-weight: 500;
         opacity: 0.7;
-        margin-right: 8px;
+        margin-right: 5px; /* تقليل المسافة */
       }
       .rocket-status-value {
-        font-size: 20px;
+        font-size: 16px; /* تصغير حجم الخط */
         font-weight: bold;
         color: #0ff;
         text-shadow: 0 0 6px #0ff;
-        letter-spacing: 1px;
+        letter-spacing: 0.5px; /* تقليل تباعد الأحرف */
       }
       .hud-row {
         display: flex;
-        align-items: center;
+        align-items: center; /* للحفاظ على المحاذاة الرأسية */
         justify-content: space-between;
         padding-bottom: 2px;
         border-bottom: 1px solid rgba(0,255,255,0.08);
       }
-      .hud-row:last-child {
+      .hud-row:last-of-type {
         border-bottom: none;
       }
       .label {
-        font-size: 18px;
+        font-size: 14px; /* تصغير حجم الخط أكثر قليلاً */
         opacity: 0.8;
-        letter-spacing: 1px;
+        letter-spacing: 0.5px; /* تقليل تباعد الأحرف */
+        line-height: 1.2; /* لضمان تباعد مناسب بين الأسطر إذا كان النص متعدد الأسطر */
       }
       .value {
-        font-size: 30px;
+        font-size: 22px; /* تصغير حجم الخط أكثر ليتسع للأرقام الطويلة */
         font-weight: bold;
         text-align: right;
-        min-width: 110px;
+        min-width: 100px; /* زيادة min-width قليلاً لاستيعاب الأرقام */
+        letter-spacing: -0.5px; /* تقليل تباعد الأحرف للأرقام */
       }
       .units {
-        font-size: 15px;
-        margin-left: 4px;
+        font-size: 12px; /* تصغير حجم الخط للوحدات لترك مساحة للرقم */
+        margin-left: 2px; /* تقليل المسافة */
         opacity: 0.6;
       }
-      .slider-row { /* هذا لم يعد مستخدمًا لمقاومة الهواء ولكن لنزيله*/
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        margin-top: 8px;
+      /* إزالة الأنماط غير المستخدمة التي أشرت إليها في تعليقاتك */
+      .slider-row, .slider-label, .slider-value, .slider {
+          display: none;
       }
-      .slider-label { /* هذا لم يعد مستخدمًا لمقاومة الهواء ولكن لنزيله*/
-        font-size: 16px;
-        opacity: 0.8;
-        letter-spacing: 1px;
-      }
-      .slider-value { /* هذا لم يعد مستخدمًا لمقاومة الهواء ولكن لنزيله*/
-        font-size: 22px;
-        font-weight: bold;
-        color: #0ff;
-        min-width: 60px;
-        text-align: right;
-      }
-      .slider { /* هذا لم يعد مستخدمًا لمقاومة الهواء ولكن لنزيله*/
-        flex: 1;
-        margin: 0 10px;
-        accent-color: #0ff;
-        height: 4px;
-      }
+
       .hud, .hud * {
         font-family: 'Orbitron', sans-serif !important;
         color: #0ff !important;
@@ -112,41 +100,70 @@
       /* --- أنماط جديدة لخط الوقود --- */
       .fuel-bar-container {
         width: 100%;
-        height: 20px; /* ارتفاع شريط التقدم */
+        height: 16px; /* ارتفاع شريط التقدم */
         background-color: rgba(0, 255, 255, 0.1);
         border: 1px solid rgba(0, 255, 255, 0.4);
         border-radius: 5px;
         overflow: hidden;
-        margin-top: 10px; /* مسافة من العناصر الأخرى */
-        position: relative; /* للسماح بوضع النص في المنتصف */
+        margin-top: 5px; /* تقليل المسافة */
+        position: relative;
       }
       .fuel-bar {
         height: 100%;
-        width: 100%; /* سيتغير هذا بواسطة JavaScript */
-        background: linear-gradient(90deg, #00ffff, #0088ff); /* تدرج لوني جميل */
-        transition: width 0.1s ease-out; /* حركة سلسة عند التغير */
+        width: 100%;
+        background: linear-gradient(90deg, #00ffff, #0088ff);
+        transition: width 0.1s ease-out;
       }
       .fuel-text {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        color: white; /* لون النص داخل الشريط */
-        font-size: 16px;
+        color: white;
+        font-size: 13px; /* تصغير حجم الخط */
         font-weight: bold;
-        text-shadow: 0 0 5px rgba(0, 0, 0, 0.8); /* ظل لتحسين الرؤية */
+        text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
       }
       /* --- أنماط للعنوان الجديد (Fuel/Thrust) --- */
       .hud-section-header {
-        font-size: 18px;
+        font-size: 15px; /* تصغير حجم الخط */
         font-weight: bold;
         color: #0ff;
         text-shadow: 0 0 8px #0ff;
-        margin-top: 20px;
+        margin-top: 15px; /* تقليل المسافة */
         margin-bottom: 5px;
         text-align: center;
         border-bottom: 1px solid rgba(0,255,255,0.1);
         padding-bottom: 5px;
+      }
+
+      /* --- أنماط الزر الجديد (داخل اللوحة) --- */
+      .launch-button {
+          background: linear-gradient(90deg, rgba(0,180,255,0.35) 0%, rgba(0,255,255,0.45) 100%);
+          border: 2px solid rgba(0, 255, 255, 0.6);
+          color: #fff;
+          font-family: 'Orbitron', sans-serif;
+          font-size: 16px; /* تصغير حجم الخط للزر */
+          font-weight: bold;
+          letter-spacing: 0.8px;
+          padding: 10px 20px; /* تقليل ال padding */
+          border-radius: 10px;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          text-shadow: 0 0 8px #0ff;
+          box-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
+          margin-top: 20px; /* مسافة من العناصر التي فوقه داخل اللوحة */
+          width: 90%; /* سيأخذ عرض أكبر داخل اللوحة */
+          align-self: center; /* لتوسيط الزر */
+      }
+      .launch-button:hover {
+          background: linear-gradient(90deg, rgba(0,200,255,0.5) 0%, rgba(0,255,255,0.6) 100%);
+          box-shadow: 0 0 20px rgba(0, 255, 255, 0.7);
+          transform: translateY(-2px);
+      }
+      .launch-button:active {
+          transform: translateY(0);
+          box-shadow: 0 0 5px rgba(0, 255, 255, 0.2);
       }
     </style>
 </head>
@@ -175,7 +192,7 @@
           <span class="value"><span id="accel">0.0</span><span class="units"> m/s²</span></span>
         </div>
         <div class="hud-row">
-          <span class="label">Current Mass</span>
+          <span class="label">Current<br>Mass</span>
           <span class="value"><span id="mass">20000</span><span class="units"> kg</span></span>
         </div>
 
@@ -186,43 +203,34 @@
         </div>
         <div class="hud-section-header">Thrust</div>
         <div class="hud-row">
-            <span class="label">Current Thrust</span>
+            <span class="label">Current <br>Thrust</span>
             <span class="value"><span id="thrust">0.0</span><span class="units"> kN</span></span>
         </div>
-        </div>
+        <button class="launch-button" id="launchButton">Launch</button>
+      </div>
     </div>
     
     <script type="module" src="/src/main.js"></script>
     <script type="module">
       import { getStageLabel } from './src/constants/ShuttleStages.js';
+      import { ShuttleStages } from './src/constants/ShuttleStages.js'; 
 
       function updateHUD() {
-        // console.log('updateHUD running', window.scene); // يمكن إزالة هذا الـ console.log بعد التأكد من عمله
-        if (!window.scene || !scene.spaceShuttle || typeof scene.spaceShuttle.getAltitude !== 'function' || !scene.shuttlePhysics) {
+        if (!window.scene || !window.scene.spaceShuttle || typeof window.scene.spaceShuttle.getAltitude !== 'function' || !window.scene.shuttlePhysics) {
           document.getElementById("rocket-status").textContent = 'Unknown';
           document.getElementById("time").textContent = '0.0';
           document.getElementById("speed").textContent = '0.0';
           document.getElementById("accel").textContent = '0.0';
           document.getElementById("mass").textContent = '0';
           document.getElementById("altitude").textContent = '0.0';
-          document.getElementById("fuel-bar").style.width = '0%'; // تهيئة خط الوقود
-          document.getElementById("fuel-percentage-text").textContent = '0%'; // تهيئة نص الوقود
-          document.getElementById("thrust").textContent = '0.0'; // تهيئة الدفع
+          document.getElementById("fuel-bar").style.width = '0%';
+          document.getElementById("fuel-percentage-text").textContent = '0%';
+          document.getElementById("thrust").textContent = '0.0';
           requestAnimationFrame(updateHUD);
           return;
         }
-        const physics = scene.shuttlePhysics;
-        const shuttle = scene.spaceShuttle;
-        // يمكن إزالة هذا الـ console.log بعد التأكد من عمله
-        // console.log('HUD:', {
-        //   time: physics ? physics.time : 'no physics',
-        //   speed: physics && physics.velocity ? physics.velocity.length() : 'no velocity',
-        //   accel: physics && physics.acceleration ? physics.acceleration.length() : 'no accel',
-        //   mass: physics ? physics.calculateTotalMass() : 'no mass',
-        //   altitude: shuttle.getAltitude(),
-        //   fuel: physics ? physics.fuelPercentage : 'no fuel', // إضافة الوقود هنا
-        //   thrust: physics ? physics.calculateThrust().length() : 'no thrust' // إضافة الدفع هنا
-        // });
+        const physics = window.scene.shuttlePhysics;
+        const shuttle = window.scene.spaceShuttle;
         
         document.getElementById("time").textContent = (physics ? (physics.time || 0) : 0).toFixed(1);
         document.getElementById("speed").textContent = (physics ? (physics.velocity ? physics.velocity.length() : 0) : 0).toFixed(1);
@@ -237,27 +245,51 @@
         document.getElementById("mass").textContent = physics ? physics.calculateTotalMass().toFixed(0) : '0';
         document.getElementById("altitude").textContent = shuttle.getAltitude().toFixed(1);
 
-        // --- تحديث خط الوقود ---
-        const fuelPercentage = physics ? Math.max(0, physics.fuelPercentage) : 0; // تأكد أن النسبة ليست سالبة
+        const fuelPercentage = physics ? Math.max(0, physics.fuelPercentage) : 0;
         document.getElementById("fuel-bar").style.width = `${fuelPercentage}%`;
         document.getElementById("fuel-percentage-text").textContent = `${fuelPercentage.toFixed(0)}%`;
 
-        // --- تحديث قوة الدفع ---
-        // بما أن calculateThrust() ترجع متجه Three.Vector3، نحتاج إلى طوله.
-        // ونقوم بتحويل النيوتن إلى كيلو نيوتن (kN) بالقسمة على 1000.
         const currentThrust = physics ? physics.calculateThrust().length() : 0;
-        document.getElementById("thrust").textContent = (currentThrust / 1000).toFixed(1); // عرض بالكيلو نيوتن
+        document.getElementById("thrust").textContent = (currentThrust / 1000).toFixed(1);
 
         requestAnimationFrame(updateHUD);
       }
       updateHUD();
 
-      // تم حذف هذا القسم لأن شريط التحكم في الرياح لم يعد موجودًا في HTML
-      // document.getElementById("wind-slider").addEventListener("input", function(e) {
-      //   if (window.scene && scene.shuttlePhysics) {
-      //     scene.shuttlePhysics.wind = parseFloat(e.target.value);
-      //   }
-      // });
+      // إضافة معالج لزر الإطلاق
+      document.getElementById('launchButton').addEventListener('click', () => {
+          // تأكد أن المحاكاة في وضع IDLE قبل محاكاة الضغط
+          if (window.scene && window.scene.shuttlePhysics && window.scene.shuttlePhysics.stage === ShuttleStages.IDLE) {
+              const spacebarKeyDown = new KeyboardEvent('keydown', {
+                  key: ' ',
+                  code: 'Space',
+                  keyCode: 32,
+                  which: 32,
+                  bubbles: true,
+                  cancelable: true
+              });
+              const spacebarKeyUp = new KeyboardEvent('keyup', {
+                  key: ' ',
+                  code: 'Space',
+                  keyCode: 32,
+                  which: 32,
+                  bubbles: true,
+                  cancelable: true
+              });
+
+              document.dispatchEvent(spacebarKeyDown);
+              document.dispatchEvent(spacebarKeyUp);
+              console.log('Launch button pressed: Spacebar event dispatched.');
+              
+              const launchButton = document.getElementById('launchButton');
+              launchButton.disabled = true; // تعطيل الزر بعد الإطلاق
+          } else if (window.scene && window.scene.shuttlePhysics && window.scene.shuttlePhysics.stage !== ShuttleStages.IDLE) {
+              console.warn('Cannot launch: Simulation is not in IDLE stage.');
+              alert('المحاكاة جارية بالفعل! انتظر حتى تنتهي أو أعد تعيينها.');
+          } else {
+              console.warn('Scene or physics not ready to dispatch launch event.');
+          }
+      });
     </script>
 </body>
 </html>

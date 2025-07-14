@@ -5,33 +5,81 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { Units } from '../utils/Units';
 import { ShuttlePhysics } from '../physics/ShuttlePhysics';
 import { ShuttleStages } from '../constants/ShuttleStages';
-import { PhysicsConstants } from '../constants/PhysicsConstants'; // Import PhysicsConstants here too
+import { PhysicsConstants } from '../constants/PhysicsConstants';
+import { CustomParticleSystem } from '../Effects/CustomParticleFire'; 
+import { CustomParticleSmoke } from '../Effects/CustomParticleSmoke';
 
 export class SpaceShuttle {
-    constructor(earth, physics) {
+    constructor(earth, physics, camera) { 
         this.earth = earth;
-        this.model = null;
+        this.model = null; 
         this.rotationSpeed = 0;
 
-        // Store references to individual parts
-        this.shuttle = null;
-        this.fuelTank = null;
-        this.rocket1 = null;
-        this.rocket2 = null;
+        this.shuttle = null;   
+        this.fuelTank = null;  
+        this.rocket1 = null;   
+        this.rocket2 = null;   
 
-        // Initialize physics system
         this.physics = physics;
+        this.audioListener = null;
+        this.camera = camera; 
 
-        // Store initial position and rotation (for IDLE stage)
-        this.initialModelPosition = null; // The visual model's initial position in Three.js units
-        this.initialModelRotation = new THREE.Euler(-Math.PI / 2, 0, -Math.PI / 2); // Point upward (Y-axis for Three.js model)
+        this.initialModelPosition = null;
+        this.initialModelRotation = new THREE.Euler(-Math.PI / 2, 0, -Math.PI / 2); 
 
-        // Bind the key handler to this instance
-        this.handleKeyDown = this.handleKeyDown.bind(this);
-        window.addEventListener('keydown', this.handleKeyDown);
+        this.mainEngineParticleSystems = []; 
+        this.srbParticleSystems = [];       
+        this.smokeParticleSystem = []; 
     }
 
-    // Function to load a model
+    setAudioListener(listener) {
+        this.audioListener = listener;
+    }
+
+    toggleEngineEffects(enable) {
+        console.log(`SpaceShuttle: Engine effects ${enable ? 'enabled' : 'disabled'}`);
+    }
+
+    playSounds(play) {
+        if (this.audioListener) {
+            console.log(`SpaceShuttle: Engine sounds ${play ? 'playing' : 'stopped'}`);
+            if (play && !this.engineSound) {
+                this.engineSound = new THREE.Audio(this.audioListener);
+                const audioLoader = new THREE.AudioLoader();
+                audioLoader.load('/sounds/lunch.mp3', (buffer) => {
+                    this.engineSound.setBuffer(buffer);
+                    this.engineSound.setLoop(true);
+                    this.engineSound.setVolume(0.5);
+                    this.engineSound.play();
+                });
+            } else if (!play && this.engineSound) {
+                this.engineSound.stop();
+                this.engineSound.disconnect(); 
+                this.engineSound = null;
+            }
+        }
+    }
+
+    playSoundsLunch(play) {
+        if (this.audioListener) {
+            console.log(`SpaceShuttle: lunch sounds ${play ? 'playing' : 'stopped'}`);
+            if (play && !this.lunchSound) {
+                this.lunchSound = new THREE.Audio(this.audioListener);
+                const audioLoader = new THREE.AudioLoader();
+                audioLoader.load('/sounds/lunchRocet.mp3', (buffer) => {
+                    this.lunchSound.setBuffer(buffer);
+                    this.lunchSound.setLoop(true);
+                    this.lunchSound.setVolume(0.5);
+                    this.lunchSound.play();
+                });
+            } else if (!play && this.lunchSound) {
+                this.lunchSound.stop();
+                this.lunchSound.disconnect(); 
+                this.lunchSound = null;
+            }
+        }
+    }
+
     loadModel(path, position = { x: 0, y: 0, z: 0 }, rotation = { x: 0, y: 0, z: 0 }, scale = 1) {
         return new Promise((resolve, reject) => {
             const loader = new GLTFLoader();
@@ -42,6 +90,12 @@ export class SpaceShuttle {
                     model.position.set(position.x, position.y, position.z);
                     model.rotation.set(rotation.x, rotation.y, rotation.z);
                     model.scale.set(scale, scale, scale);
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
                     resolve(model);
                 },
                 undefined,
@@ -53,66 +107,54 @@ export class SpaceShuttle {
         });
     }
 
-    async load() {
+    async load() { 
         try {
-            // Create a group for all parts
             this.model = new THREE.Group();
 
-            // Load space shuttle in the middle
-            this.shuttle = await this.loadModel('/models/space_shuttle/space_shuttle.glb',
-                { x: 0, y: 0, z: 0 },
-                { x: -Math.PI / 2, y: 0, z: -Math.PI } // Point upward relative to its own local axis
+            this.shuttle = await this.loadModel('/models/space_shuttle/space_shuttle.glb', 
+                { x: 0, y: 0, z: 0 }, 
+                { x: -Math.PI / 2, y: 0, z: -Math.PI } 
             );
             this.model.add(this.shuttle);
 
-            // Load fuel tank
-            this.fuelTank = await this.loadModel('/models/fuel_tank/fuel_tank.glb',
-                { x: 0, y: 0, z: 0 },
+            this.fuelTank = await this.loadModel('/models/fuel_tank/fuel_tank.glb', 
+                { x: 0, y: 0, z: 0 }, 
                 { x: -Math.PI / 2, y: 0, z: -Math.PI }
             );
             this.model.add(this.fuelTank);
 
-            // Load rockets
-            this.rocket1 = await this.loadModel('/models/rocket/rocket_1.glb',
-                { x: 0, y: 0, z: 0 },
-                { x: -Math.PI / 2, y: 0, z: -Math.PI }
-            );
-            this.rocket2 = await this.loadModel('/models/rocket/rocket_2.glb',
-                { x: 0, y: 0, z: 0 },
+            this.rocket1 = await this.loadModel('/models/rocket/rocket_1.glb', 
+                { x: 0, y: 0, z: 0 }, 
                 { x: -Math.PI / 2, y: 0, z: -Math.PI }
             );
             this.model.add(this.rocket1);
+
+            this.rocket2 = await this.loadModel('/models/rocket/rocket_2.glb', 
+                { x: 0, y: 0, z: 0 }, 
+                { x: -Math.PI / 2, y: 0, z: -Math.PI }
+            );
             this.model.add(this.rocket2);
 
-            // Scale the entire group to match a target real-world height
-            const targetRealHeightMeters = 45.46; // Real height of Space Shuttle stack in meters
+            const targetRealHeightMeters = 45.46; 
             const box = new THREE.Box3().setFromObject(this.model);
-            const currentModelHeight = box.max.y - box.min.y; // Height of the loaded model in its own scale
+            const currentModelHeight = box.max.y - box.min.y;
             const scaleFactor = Units.toProjectUnits(targetRealHeightMeters) / currentModelHeight;
             this.model.scale.set(scaleFactor, scaleFactor, scaleFactor);
 
-            // --- Set Initial Position for the Visual Model (in Project Units) ---
-            // The shuttle starts on the launch pad at Earth's surface.
-            // We need to define its initial offset from Earth's center in project units.
-            const initialShuttleHeightFromSurfaceMeters = 22; // Approx height of shuttle base from ground
-            const initialShuttleWidthOffsetMeters = -24; // Z-offset for visual presentation if needed
+            this._setupFireEffects();
 
-            // Calculate initial Y position (radius of Earth in project units + shuttle's initial height from surface in project units)
+            const initialShuttleHeightFromSurfaceMeters = 22; 
+            const initialShuttleWidthOffsetMeters = -24; 
+
             const initialModelYPosition = this.earth.getRadius() + Units.toProjectUnits(initialShuttleHeightFromSurfaceMeters);
             const initialModelZPosition = Units.toProjectUnits(initialShuttleWidthOffsetMeters);
 
             this.model.position.set(0, initialModelYPosition, initialModelZPosition);
-
-            // Store initial model position and rotation for the IDLE stage
             this.initialModelPosition = this.model.position.clone();
             this.initialModelRotation = this.model.rotation.clone();
 
-
-            // --- Initialize Physics Position (in Real Meters from Earth's center) ---
-            // The physics engine operates in real meters.
-            // PhysicsConstants.EARTH_RADIUS is already in real meters.
             const initialPhysicsYPosition = PhysicsConstants.EARTH_RADIUS + initialShuttleHeightFromSurfaceMeters;
-            this.physics.position.set(0, initialPhysicsYPosition, 0); // Physics usually starts directly "up" from center
+            this.physics.position.set(0, initialPhysicsYPosition, 0);
 
             console.log('Space shuttle loaded successfully');
             console.log(`Initial Visual Model Position (Project Units): ${this.initialModelPosition.toArray().map(v => v.toFixed(2))}`);
@@ -125,81 +167,154 @@ export class SpaceShuttle {
         }
     }
 
-    handleKeyDown(event) {
-        // Start launch sequence on spacebar
-        if (event.key === ' ' && this.physics.stage === ShuttleStages.IDLE) {
-            console.log('Starting launch sequence');
-            this.physics.setStage(ShuttleStages.LIFTOFF);
-        }
+    _setupFireEffects() {
+   
+        const shuttleFirePositions = [
+
+            new THREE.Vector3( 0,6.65, -2.5), 
+          
+        ];
+
+        shuttleFirePositions.forEach(pos => {
+            const ps = new CustomParticleSystem(this.camera, this.shuttle, '/texture/fire.png'); 
+         
+            ps._points.position.copy(pos); 
+            this.mainEngineParticleSystems.push(ps);
+            
+          
+        });
+
+      
+        const srb1FirePosition = new THREE.Vector3(
+            -1, 5.1, -4
+        );
+        
+         const psRocket1 = new CustomParticleSystem(this.camera, this.rocket1, '/texture/fire.png'); 
+     
+        psRocket1._points.position.copy(srb1FirePosition);
+        this.srbParticleSystems.push(psRocket1);
+       
+
+        
+        const srb2FirePosition = new THREE.Vector3(
+            1, 5.1, -4
+        );
+        
+        const psRocket2 = new CustomParticleSystem(this.camera, this.rocket2, '/texture/fire.png'); 
+      
+        psRocket2._points.position.copy(srb2FirePosition);
+        this.srbParticleSystems.push(psRocket2);
+     
+              const smokePosition2 = new THREE.Vector3(
+                0,6, -8
+            );
+            
+            const pssmoke2 = new CustomParticleSmoke(this.camera, this.rocket2, '/texture/smoke.png'); 
+       
+            pssmoke2._points.position.copy(smokePosition2);
+            this.srbParticleSystems.push(pssmoke2);
+        
+
+          
+        const smokePosition = new THREE.Vector3(
+            0, 4,-3
+        );
+        
+        const pssmoke = new CustomParticleSmoke(this.camera, this.rocket2, '/texture/smoke.png'); 
+    
+        pssmoke._points.position.copy(smokePosition);
+        this.smokeParticleSystem.push(pssmoke);
+
+
+        
+
+        
     }
 
     update(deltaTime) {
+     
         if (this.model) {
             if (this.physics.stage === ShuttleStages.IDLE) {
-                // Rocket is stationary on launch pad
                 this.model.position.copy(this.initialModelPosition);
                 this.model.rotation.copy(this.initialModelRotation);
+                this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(false));
+                this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
+                this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
             } else {
-                // Update physics simulation
                 this.physics.update(deltaTime);
-
-                // --- Update Model Position based on Physics (converting from Real Meters to Project Units) ---
-                // this.physics.position is in real meters (from Earth's center).
-                // this.model.position should be in project units.
 
                 const physicsPositionInProjectUnits = new THREE.Vector3(
                     Units.toProjectUnits(this.physics.position.x),
                     Units.toProjectUnits(this.physics.position.y),
                     Units.toProjectUnits(this.physics.position.z)
                 );
-                
-                // Keep X and Z fixed to initial launch pad position during vertical ascent stages
-                if (this.physics.stage === ShuttleStages.LIFTOFF || this.physics.stage === ShuttleStages.ATMOSPHERIC_ASCENT) {
-                    this.model.position.x = this.initialModelPosition.x; // Keep initial X
-                    this.model.position.y = physicsPositionInProjectUnits.y; // Update Y from physics
-                    this.model.position.z = this.initialModelPosition.z; // Keep initial Z
+
+                if (
+                    this.physics.stage === ShuttleStages.ENGINE_STARTUP ||
+                    this.physics.stage === ShuttleStages.LIFTOFF ||
+                    this.physics.stage === ShuttleStages.ATMOSPHERIC_ASCENT
+                ) {
+                    this.model.position.x = this.initialModelPosition.x;
+                    this.model.position.y = physicsPositionInProjectUnits.y;
+                    this.model.position.z = this.initialModelPosition.z;
                 } else {
-                    // For orbital stages and beyond, allow full 3D movement from physics
                     this.model.position.copy(physicsPositionInProjectUnits);
                 }
 
-                // For a more dynamic orientation during flight, you might want to adjust rotation
-                // based on velocity or acceleration, but for now, keep initial upward rotation.
                 this.model.rotation.copy(this.initialModelRotation);
 
-                // Handle stage-specific effects (visuals, sounds, camera, etc.)
+            
+                this.mainEngineParticleSystems.forEach(ps => ps.update(deltaTime));
+                this.srbParticleSystems.forEach(ps => ps.update(deltaTime));
+                this.smokeParticleSystem.forEach(ps => ps.update(deltaTime));
+               
+
                 switch (this.physics.stage) {
+                    case ShuttleStages.ENGINE_STARTUP:
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
+                        this.srbParticleSystems.forEach(ps => ps.setVisibility(true)); 
+                        this.smokeParticleSystem.forEach(ps => ps.setVisibility(true));
+                        this.playSounds(true);
+                        break;
                     case ShuttleStages.LIFTOFF:
-                        // Example: Add engine exhaust effects, camera shake.
-                        // You'd typically add a ParticleEmitter for smoke/fire here.
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
+                        this.srbParticleSystems.forEach(ps => ps.setVisibility(true));
+                        this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
+                        this.playSounds(false); 
+                        this.playSoundsLunch(true); 
                         break;
                     case ShuttleStages.ATMOSPHERIC_ASCENT:
-                        // Example: Adjust exhaust size/intensity based on air density (altitude).
-                        // Handle SRB detachment visual event.
                         if (this.physics.srbDetached && this.rocket1.parent) {
                             this.model.remove(this.rocket1);
                             this.model.remove(this.rocket2);
+                            this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
                             console.log("Visual: SRBs removed from scene.");
-                            // Add logic to make SRBs fall separately if you had a separate physics for them
                         }
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
+                        this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
                         break;
                     case ShuttleStages.ORBITAL_INSERTION:
-                        // Example: Reduce main engine exhaust.
-                        // Handle ET detachment visual event.
                         if (this.physics.etDetached && this.fuelTank.parent) {
                             this.model.remove(this.fuelTank);
                             console.log("Visual: External Fuel Tank removed from scene.");
-                            // Add logic for ET falling/burning up
                         }
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(false));
+                        this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
+                        this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
+                        this.playSoundsLunch(false);
                         break;
                     case ShuttleStages.ORBITAL_STABILIZATION:
-                        // No active thrust, subtle adjustments.
-                        break;
                     case ShuttleStages.FREE_SPACE_MOTION:
-                        // No thrust, just orbit.
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(false));
+                        this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
+                        this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
+                        this.playSoundsLunch(false);
                         break;
                     case ShuttleStages.ORBITAL_MANEUVERING:
-                        // Small thruster bursts effects.
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true)); 
+                        this.srbParticleSystems.forEach(ps => ps.setVisibility(false)); 
+                        this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
+                        this.playSoundsLunch(true); 
                         break;
                 }
             }
@@ -207,12 +322,45 @@ export class SpaceShuttle {
     }
 
     dispose() {
-        window.removeEventListener('keydown', this.handleKeyDown);
+        this.mainEngineParticleSystems.forEach(ps => ps.dispose());
+        this.srbParticleSystems.forEach(ps => ps.dispose());
+        this.smokeParticleSystem.forEach(ps => ps.dispose());
+        if (this.model) {
+            this.model.traverse((child) => {
+                if (child.isMesh) {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach(material => {
+                                material.dispose();
+                                if (material.map) material.map.dispose();
+                                if (material.normalMap) material.normalMap.dispose();
+                            });
+                        } else {
+                            child.material.dispose();
+                            if (child.material.map) child.material.map.dispose();
+                            if (child.material.normalMap) child.material.normalMap.map.dispose();
+                        }
+                    }
+                }
+            });
+            if (this.model.parent) {
+                this.model.parent.remove(this.model);
+            }
+        }
+        if (this.engineSound) {
+            this.engineSound.stop();
+            this.engineSound.disconnect();
+            this.engineSound = null;
+        }
+        if (this.lunchSound) {
+            this.lunchSound.stop();
+            this.lunchSound.disconnect();
+            this.lunchSound = null;
+        }
     }
 
     getAltitude() {
-        // Returns the current altitude in real meters, as calculated by the physics engine.
-        // This is the distance from the Earth's surface, not from the center.
         return this.physics.position.y - PhysicsConstants.EARTH_RADIUS;
     }
 }

@@ -9,7 +9,6 @@ export const PhysicsConstants = {
     // Atmosphere constants
     ATMOSPHERE_HEIGHT: 100000, // meters
     AIR_DENSITY_SEA_LEVEL: 1.225, // kg/m³
-    // تصحيح: هذا يجب أن يكون مقلوب "ارتفاع المقياس" (scale height) للغلاف الجوي
     AIR_DENSITY_DECAY_RATE: 1 / 8500, // per meter (approx. for 8.5km scale height)
 
     // Space shuttle constants
@@ -20,14 +19,16 @@ export const PhysicsConstants = {
     // تصحيح قيم الدفع بناءً على البيانات الفعلية
     THRUST_MAIN_ENGINES: 3 * 1.75e6, // N (Total for 3 main engines, each approx 1.75MN) = 5.25e6 N
     THRUST_SOLID_ROCKETS: 2 * 14.7e6, // N (Total for 2 SRBs, each approx 14.7MN) = 29.4e6 N
-    
+
+    // جديد: الدفع المطلوب للحفاظ على المكوك ثابتًا أثناء بدء تشغيل المحركات
+    // (الكتلة الإجمالية الأولية للمكوك * الجاذبية + هامش بسيط لمنع الغرق)
+    THRUST_ENGINE_STARTUP: (110000 + 760000 + 2 * 590000) * 9.81 * 1.005, // N (تقريبًا 20.2 MN)
+
     // قيم افتراضية لـ Drag Coefficient و Cross-sectional Area
     DRAG_COEFFICIENT: 0.2, // Example value, needs tuning based on shuttle shape and orientation
     CROSS_SECTIONAL_AREA: 200, // m², Example value, largest cross-section during ascent
 
     // معدل استهلاك الوقود
-    // هذا يمثل معدل حرق الوقود الكلي للمحركات الرئيسية.
-    // عادةً ما يتم التعبير عنه بالكيلوجرام في الثانية. (فعليًا حوالي 460 كجم/ثانية للمكوك)
     FUEL_CONSUMPTION_RATE: 460, // kg/s (Example for main engines)
 
     // Orbital mechanics
@@ -35,13 +36,16 @@ export const PhysicsConstants = {
     GEOSTATIONARY_ORBIT_ALTITUDE: 35786000, // meters
     ORBITAL_VELOCITY_LEO: 7800, // m/s (approximate for Low Earth Orbit)
     ORBITAL_VELOCITY_GEO: 3070, // m/s
-    ORBITAL_VELOCITY_TOLERANCE: 50, // m/s, tolerance for reaching orbital velocity
+    ORBITAL_VELOCITY_TOLERANCE: 50, // m/s (tolerance for orbital insertion velocity)
 
-    // Detachment Timings and Altitudes (example values, tune as needed for realistic simulation)
-    SRB_DETACH_TIME: 120, // seconds after launch (~2 minutes)
-    SRB_DETACH_ALTITUDE: 45000, // meters (~45 km)
+    // Detachment Altitudes and Times
+    SRB_DETACH_ALTITUDE: 45000, // meters
+    SRB_DETACH_TIME: 120, // seconds
 
-    FUEL_TANK_DETACH_TIME: 510, // seconds after launch (~8.5 minutes)
-    FUEL_TANK_DETACH_ALTITUDE: 110000, // meters (just above atmosphere)
-    FUEL_TANK_DETACH_FUEL_PERCENT: 5 // % fuel remaining in tank at separation
+    FUEL_TANK_DETACH_ALTITUDE: 110000, // meters
+    FUEL_TANK_DETACH_TIME: 480, // seconds
+    FUEL_TANK_DETACH_FUEL_PERCENT: 5, // % fuel remaining at detachment
+
+    // مرحلة بدء تشغيل المحرك
+    ENGINE_STARTUP_DURATION: 5, // seconds (مدة مرحلة بدء المحرك قبل الإقلاع الفعلي)
 };

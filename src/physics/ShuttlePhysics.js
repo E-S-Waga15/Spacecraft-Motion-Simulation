@@ -7,39 +7,40 @@ import * as THREE from 'three';
 
 export class ShuttlePhysics {
     constructor() {
-        // --- System State Initialization ---
         this.stage = ShuttleStages.IDLE;
         this.time = 0; // Simulation time in seconds
+        this.engineStartupTimer = 0; // مؤقت لمرحلة بدء المحرك
 
-        // --- Kinematic Properties (using THREE.Vector3 for convenience) ---
-        // Position vector (from Earth's center). Starts at Earth's surface along Y-axis.
         this.position = new THREE.Vector3(0, PhysicsConstants.EARTH_RADIUS, 0);
-        this.velocity = new THREE.Vector3(); // Velocity vector in m/s
-        this.acceleration = new THREE.Vector3(); // Acceleration vector in m/s^2
-        this.force = new THREE.Vector3(); // Net force vector in Newtons
+        this.velocity = new THREE.Vector3();
+        this.acceleration = new THREE.Vector3();
+        this.force = new THREE.Vector3();
 
-        // --- Mass Properties ---
         this.shuttleDryMass = PhysicsConstants.SHUTTLE_MASS;
         this.externalTankInitialTotalMass = PhysicsConstants.FUEL_TANK_MASS;
         this.srbInitialTotalMass = PhysicsConstants.ROCKET_MASS;
 
-        // --- Component Attachment Status ---
         this.isFuelTankAttached = true;
         this.isRocket1Attached = true;
         this.isRocket2Attached = true;
 
-        // --- Fuel Properties ---
         this.fuelPercentage = 100;
 
-        // --- Detachment Tracking (to prevent multiple detachments) ---
         this.srbDetached = false;
         this.etDetached = false;
 
-        // --- Initial State Logging ---
+        this.launchPad = null; 
+        this.towerTilted = false; 
+
         console.log("ShuttlePhysics Initialized:");
         console.log(`  Initial Position: (${this.position.x.toFixed(0)}, ${this.position.y.toFixed(0)}, ${this.position.z.toFixed(0)}) m (from Earth center)`);
         console.log(`  Initial Altitude: ${(this.position.y - PhysicsConstants.EARTH_RADIUS).toFixed(0)} m`);
         console.log(`  Initial Total Mass: ${this.calculateTotalMass().toFixed(2)} kg`);
+    }
+
+
+    setLaunchPad(launchPad) {
+        this.launchPad = launchPad;
     }
 
     calculateTotalMass() {
@@ -132,6 +133,12 @@ export class ShuttlePhysics {
         let currentThrustMagnitude = 0;
 
         switch (this.stage) {
+            case ShuttleStages.IDLE:
+                currentThrustMagnitude = 0;
+                break;
+            case ShuttleStages.ENGINE_STARTUP:
+                currentThrustMagnitude = PhysicsConstants.THRUST_ENGINE_STARTUP;
+                break;
             case ShuttleStages.LIFTOFF:
                 if (this.fuelPercentage > 0) {
                     currentThrustMagnitude += PhysicsConstants.THRUST_MAIN_ENGINES;
@@ -162,7 +169,7 @@ export class ShuttlePhysics {
 
         if (isNaN(currentThrustMagnitude) || !isFinite(currentThrustMagnitude)) {
             console.warn("Thrust magnitude became NaN/Infinity. Returning zero thrust.");
-            return new THREE.Vector3(); // Return zero thrust if magnitude is invalid
+            return new THREE.Vector3();
         }
 
         thrust.y = currentThrustMagnitude;
@@ -170,8 +177,7 @@ export class ShuttlePhysics {
     }
 
     update(deltaTime) {
-        // --- Input Validation & Stability Control ---
-        const maxDeltaTime = 0.0266; // 1/60th of a second
+        const maxDeltaTime = 0.0166;
         if (deltaTime > maxDeltaTime) {
             deltaTime = maxDeltaTime;
             console.warn(`deltaTime capped to ${maxDeltaTime.toFixed(3)}s for stability.`);
@@ -180,72 +186,60 @@ export class ShuttlePhysics {
             return;
         }
 
-        // --- Reset and Calculate Forces for the Current Frame ---
         this.force.set(0, 0, 0);
 
-        // --- IMPORTANT: Calculate altitude BEFORE applying forces to use for this frame's calculations (e.g., air resistance) ---
-        // This 'altitude' is the altitude at the BEGINNING of this timestep.
         let altitudeAtStartOfStep = this.position.y - PhysicsConstants.EARTH_RADIUS;
 
-        // Add gravitational force
         this.force.add(this.calculateGravityForce(this.position));
 
-        // --- Handle Ground Interaction (Normal Force) ---
         if (this.stage === ShuttleStages.IDLE) {
             if (altitudeAtStartOfStep <= 0) {
                 this.position.setY(PhysicsConstants.EARTH_RADIUS);
                 this.velocity.set(0, 0, 0);
                 this.acceleration.set(0, 0, 0);
                 this.force.add(this.calculateNormalForce());
-                // console.log(`IDLE: On ground, altitude: ${altitudeAtStartOfStep.toFixed(2)}m. Normal force applied.`);
             }
-        } else {
-            // Apply air resistance only when off the ground and within the atmosphere.
-            // Ensure altitude is positive for drag calculation if it somehow goes negative
+        } else { // Handle non-IDLE stages (including ENGINE_STARTUP)
             if (altitudeAtStartOfStep > 0 && altitudeAtStartOfStep < PhysicsConstants.ATMOSPHERE_HEIGHT) {
                 this.force.add(this.calculateAirResistance(this.velocity, altitudeAtStartOfStep));
             }
+            // Ensure no sinking below ground during ENGINE_STARTUP if it happens
+            if (this.stage === ShuttleStages.ENGINE_STARTUP && altitudeAtStartOfStep <= 0) {
+                this.position.setY(PhysicsConstants.EARTH_RADIUS);
+                this.velocity.y = Math.max(0, this.velocity.y); // Prevent downward velocity
+                this.acceleration.y = Math.max(0, this.acceleration.y); // Prevent downward acceleration
+            }
         }
 
-        // Apply thrust force
         const currentThrustVector = this.calculateThrust();
         this.force.add(currentThrustVector);
 
-        // --- Calculate Acceleration (Newton's Second Law: F = ma => a = F/m) ---
         const currentTotalMass = this.calculateTotalMass();
         if (currentTotalMass > 0 && !isNaN(currentTotalMass) && isFinite(currentTotalMass)) {
             this.acceleration.copy(this.force).divideScalar(currentTotalMass);
         } else {
             this.acceleration.set(0, 0, 0);
             console.error("Invalid mass detected, acceleration set to zero.", currentTotalMass);
-            // Optionally, if mass instability is severe, also zero velocity to prevent propagation
-            // this.velocity.set(0, 0, 0);
         }
 
-        // --- Update Kinematics using Euler Integration ---
         this.velocity.addScaledVector(this.acceleration, deltaTime);
         this.position.addScaledVector(this.velocity, deltaTime);
 
-        // --- IMPORTANT: Recalculate altitude AFTER position has been updated for this frame ---
-        // This 'currentAltitude' represents the altitude at the END of this timestep.
         const currentAltitude = this.position.y - PhysicsConstants.EARTH_RADIUS;
 
-        // --- Post-update checks for stability ---
-        // Ensure altitude doesn't go significantly below ground during flight stages
         if (this.stage !== ShuttleStages.IDLE) {
-            if (currentAltitude < -1) { // Allowing a tiny margin for float precision
+            if (currentAltitude < -1) {
                 console.warn(`Shuttle significantly below ground (${currentAltitude.toFixed(2)}m) during flight! Snapping back.`);
                 this.position.setY(PhysicsConstants.EARTH_RADIUS);
                 if (this.velocity.y < 0) {
-                    this.velocity.y = 0; // Remove downward velocity
+                    this.velocity.y = 0;
                 }
-                if (this.acceleration.y < 0) { // Also cap downward acceleration
+                if (this.acceleration.y < 0) {
                     this.acceleration.y = 0;
                 }
             }
         }
 
-        // Comprehensive NaN/Infinity checks for position, velocity, acceleration
         if (isNaN(this.position.x) || !isFinite(this.position.x) ||
             isNaN(this.position.y) || !isFinite(this.position.y) ||
             isNaN(this.position.z) || !isFinite(this.position.z)) {
@@ -260,7 +254,7 @@ export class ShuttlePhysics {
             isNaN(this.velocity.z) || !isFinite(this.velocity.z)) {
             console.error("Velocity became NaN/Infinity. Resetting to zero.");
             this.velocity.set(0, 0, 0);
-            this.acceleration.set(0, 0, 0); // Reset acceleration too
+            this.acceleration.set(0, 0, 0);
         }
 
         if (isNaN(this.acceleration.x) || !isFinite(this.acceleration.x) ||
@@ -270,24 +264,20 @@ export class ShuttlePhysics {
             this.acceleration.set(0, 0, 0);
         }
 
-
-        // --- Update Fuel Consumption ---
         const mainEngineFuelBurnRate = PhysicsConstants.FUEL_CONSUMPTION_RATE;
 
-        // Consume fuel only if thrust is being applied and fuel is available
-        if (this.fuelPercentage > 0 && currentThrustVector.lengthSq() > 0.1) { // Add small threshold for thrust
+        if (this.fuelPercentage > 0 && currentThrustVector.lengthSq() > 0.1) {
             let actualBurnRate = 0;
             if (this.stage === ShuttleStages.LIFTOFF ||
                 this.stage === ShuttleStages.ATMOSPHERIC_ASCENT ||
                 this.stage === ShuttleStages.ORBITAL_INSERTION ||
                 this.stage === ShuttleStages.ORBITAL_MANEUVERING) {
 
-                if (currentThrustVector.y > 0) { // Only burn fuel for upward thrust
+                if (currentThrustVector.y > 0) {
                     actualBurnRate = mainEngineFuelBurnRate;
                 }
 
                 const fuelMassInTank = this.externalTankInitialTotalMass * (this.fuelPercentage / 100);
-                // Ensure we don't try to burn more fuel than available in a single step
                 actualBurnRate = Math.min(actualBurnRate, fuelMassInTank / deltaTime);
 
                 const fuelPercentageConsumed = (actualBurnRate * deltaTime / this.externalTankInitialTotalMass) * 100;
@@ -300,42 +290,51 @@ export class ShuttlePhysics {
             }
         }
 
-
-        // --- Update Simulation Time ---
         this.time += deltaTime;
 
-        // --- Automatic Launch Trigger ---
-        // NOTE: The automatic trigger at 30 seconds may cause a jump if user already pressed space.
-        // Consider removing or making it conditional on !this.launchedYet flag.
-        if (this.time >= 30 && this.stage === ShuttleStages.IDLE) {
-            this.stage = ShuttleStages.LIFTOFF;
-            console.log(`Shuttle Stage: ${getStageLabel(this.stage)} at ${this.time.toFixed(2)}s. LIFTOFF initiated!`);
+       
+        if (this.stage === ShuttleStages.ENGINE_STARTUP) {
+            this.engineStartupTimer += deltaTime;
+        } else {
+            this.engineStartupTimer = 0;
         }
 
-        // --- Update Stage and Handle Component Detachments using the currentAltitude ---
-        this.updateStage(currentAltitude); // Pass currentAltitude to updateStage
-        this.handleComponentDetachment(currentAltitude, this.time, this.velocity.length()); // Pass currentAltitude to handleComponentDetachment
+     
+        this.updateStage(currentAltitude, deltaTime);
+        this.handleComponentDetachment(currentAltitude, this.time, this.velocity.length());
 
-        // --- Extensive Logging for Debugging ---
         console.log(`--- Time: ${this.time.toFixed(2)}s | Stage: ${getStageLabel(this.stage)} ---`);
-        console.log(`  Altitude: ${currentAltitude.toFixed(2)} m`); // Log currentAltitude
+        console.log(`  Altitude: ${currentAltitude.toFixed(2)} m`);
         console.log(`  Speed: ${this.velocity.length().toFixed(2)} m/s`);
         console.log(`  Velocity Y: ${this.velocity.y.toFixed(2)} m/s`);
         console.log(`  Acceleration: ${this.acceleration.length().toFixed(2)} m/s²`);
         console.log(`  Acceleration Y: ${this.acceleration.y.toFixed(2)} m/s²`);
-        console.log(`  Current Mass: ${currentTotalMass.toFixed(2)} kg`);
+        console.log(`  Current Mass: ${this.calculateTotalMass().toFixed(2)} kg`);
         console.log(`  Fuel: ${this.fuelPercentage.toFixed(2)}%`);
         console.log(`  Force (Total Y): ${this.force.y.toFixed(2)} N`);
         console.log(`  Position (Y from Center): ${this.position.y.toFixed(0)} m`);
         console.log("--------------------------------------------------");
     }
 
-    // Modified to accept altitude as a parameter
-    updateStage(currentAltitude) {
+    updateStage(currentAltitude, deltaTime) {
         const velocityMagnitude = this.velocity.length();
 
         switch (this.stage) {
             case ShuttleStages.IDLE:
+                break;
+            case ShuttleStages.ENGINE_STARTUP:
+              
+                if (this.engineStartupTimer >= (PhysicsConstants.ENGINE_STARTUP_DURATION - 2) && !this.towerTilted) {
+                    if (this.launchPad && this.launchPad.towerModel) {
+                        this.launchPad.tiltTower(90);
+                        this.towerTilted = true;
+                        console.log("ShuttlePhysics: Launch pad tower tilting initiated via simulation time.");
+                    }
+                }
+                if (this.engineStartupTimer >= PhysicsConstants.ENGINE_STARTUP_DURATION) {
+                    this.stage = ShuttleStages.LIFTOFF;
+                    console.log(`Shuttle Stage: ${getStageLabel(this.stage)} - Transitioned from ENGINE_STARTUP.`);
+                }
                 break;
             case ShuttleStages.LIFTOFF:
                 if (currentAltitude > PhysicsConstants.SRB_DETACH_ALTITUDE && this.srbDetached) {
@@ -381,9 +380,7 @@ export class ShuttlePhysics {
         }
     }
 
-    // Already accepts altitude as a parameter, so no change needed here beyond using currentAltitude
     handleComponentDetachment(altitude, currentTime, currentVelocity) {
-        // --- Solid Rocket Booster (SRB) Detachment ---
         if (!this.srbDetached && this.isRocket1Attached &&
             currentTime >= PhysicsConstants.SRB_DETACH_TIME &&
             altitude >= PhysicsConstants.SRB_DETACH_ALTITUDE) {
@@ -394,7 +391,6 @@ export class ShuttlePhysics {
             console.log(`SRBs detached at ${currentTime.toFixed(2)}s, Altitude: ${altitude.toFixed(0)}m`);
         }
 
-        // --- External Tank (ET) Detachment ---
         if (!this.etDetached && this.isFuelTankAttached &&
             currentTime >= PhysicsConstants.FUEL_TANK_DETACH_TIME &&
             altitude >= PhysicsConstants.FUEL_TANK_DETACH_ALTITUDE &&
@@ -410,6 +406,12 @@ export class ShuttlePhysics {
 
     setStage(stage) {
         this.stage = stage;
+        if (stage === ShuttleStages.ENGINE_STARTUP) {
+            this.engineStartupTimer = 0;
+            this.towerTilted = false; // إعادة تعيين علامة الميلان عند بدء مرحلة جديدة
+        } else if (stage === ShuttleStages.IDLE) {
+            this.towerTilted = false; // إعادة تعيين العلامة عند العودة إلى السكون
+        }
         console.log(`Shuttle Stage manually set to: ${getStageLabel(stage)}`);
     }
 
