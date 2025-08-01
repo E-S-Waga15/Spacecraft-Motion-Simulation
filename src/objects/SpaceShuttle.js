@@ -6,30 +6,37 @@ import { Units } from '../utils/Units';
 import { ShuttlePhysics } from '../physics/ShuttlePhysics';
 import { ShuttleStages } from '../constants/ShuttleStages';
 import { PhysicsConstants } from '../constants/PhysicsConstants';
-import { CustomParticleSystem } from '../Effects/CustomParticleFire'; 
+import { CustomParticleSystem } from '../Effects/CustomParticleFire';
 import { CustomParticleSmoke } from '../Effects/CustomParticleSmoke';
 
 export class SpaceShuttle {
-    constructor(earth, physics, camera) { 
+    constructor(earth, physics, camera, scene) {
         this.earth = earth;
-        this.model = null; 
+        this.model = null;
         this.rotationSpeed = 0;
 
-        this.shuttle = null;   
-        this.fuelTank = null;  
-        this.rocket1 = null;   
-        this.rocket2 = null;   
+        this.shuttle = null;
+        this.fuelTank = null;
+        this.rocket1 = null;
+        this.rocket2 = null;
 
         this.physics = physics;
         this.audioListener = null;
-        this.camera = camera; 
+        this.camera = camera;
+        this.scene = scene;
 
         this.initialModelPosition = null;
-        this.initialModelRotation = new THREE.Euler(-Math.PI / 2, 0, -Math.PI / 2); 
+        this.initialModelRotation = new THREE.Euler(-Math.PI / 2, 0, -Math.PI / 2);
 
-        this.mainEngineParticleSystems = []; 
-        this.srbParticleSystems = [];       
-        this.smokeParticleSystem = []; 
+        this.mainEngineParticleSystems = [];
+        this.srbParticleSystems = [];
+        this.smokeParticleSystem = [];
+
+        this.detachedParts = [];
+        this.gravityConstant = -9.81; // Real-world gravity in m/s^2
+
+        // New: Threshold for removing detached parts (e.g., 2000 meters below shuttle's detachment point)
+        this.DETACHED_PART_FALL_THRESHOLD_METERS = 2000;
     }
 
     setAudioListener(listener) {
@@ -54,7 +61,7 @@ export class SpaceShuttle {
                 });
             } else if (!play && this.engineSound) {
                 this.engineSound.stop();
-                this.engineSound.disconnect(); 
+                this.engineSound.disconnect();
                 this.engineSound = null;
             }
         }
@@ -74,7 +81,7 @@ export class SpaceShuttle {
                 });
             } else if (!play && this.lunchSound) {
                 this.lunchSound.stop();
-                this.lunchSound.disconnect(); 
+                this.lunchSound.disconnect();
                 this.lunchSound = null;
             }
         }
@@ -107,35 +114,35 @@ export class SpaceShuttle {
         });
     }
 
-    async load() { 
+    async load() {
         try {
             this.model = new THREE.Group();
 
-            this.shuttle = await this.loadModel('/models/space_shuttle/space_shuttle.glb', 
-                { x: 0, y: 0, z: 0 }, 
-                { x: -Math.PI / 2, y: 0, z: -Math.PI } 
+            this.shuttle = await this.loadModel('/models/space_shuttle/space_shuttle.glb',
+                { x: 0, y: 0, z: 0 },
+                { x: -Math.PI / 2, y: 0, z: -Math.PI }
             );
             this.model.add(this.shuttle);
 
-            this.fuelTank = await this.loadModel('/models/fuel_tank/fuel_tank.glb', 
-                { x: 0, y: 0, z: 0 }, 
+            this.fuelTank = await this.loadModel('/models/fuel_tank/fuel_tank.glb',
+                { x: 0, y: 0, z: 0 },
                 { x: -Math.PI / 2, y: 0, z: -Math.PI }
             );
             this.model.add(this.fuelTank);
 
-            this.rocket1 = await this.loadModel('/models/rocket/rocket_1.glb', 
-                { x: 0, y: 0, z: 0 }, 
+            this.rocket1 = await this.loadModel('/models/rocket/rocket_1.glb',
+                { x: 0, y: 0, z: 0 },
                 { x: -Math.PI / 2, y: 0, z: -Math.PI }
             );
             this.model.add(this.rocket1);
 
-            this.rocket2 = await this.loadModel('/models/rocket/rocket_2.glb', 
-                { x: 0, y: 0, z: 0 }, 
+            this.rocket2 = await this.loadModel('/models/rocket/rocket_2.glb',
+                { x: 0, y: 0, z: 0 },
                 { x: -Math.PI / 2, y: 0, z: -Math.PI }
             );
             this.model.add(this.rocket2);
 
-            const targetRealHeightMeters = 45.46; 
+            const targetRealHeightMeters = 45.46;
             const box = new THREE.Box3().setFromObject(this.model);
             const currentModelHeight = box.max.y - box.min.y;
             const scaleFactor = Units.toProjectUnits(targetRealHeightMeters) / currentModelHeight;
@@ -143,8 +150,8 @@ export class SpaceShuttle {
 
             this._setupFireEffects();
 
-            const initialShuttleHeightFromSurfaceMeters = 22; 
-            const initialShuttleWidthOffsetMeters = -24; 
+            const initialShuttleHeightFromSurfaceMeters = 22;
+            const initialShuttleWidthOffsetMeters = -24;
 
             const initialModelYPosition = this.earth.getRadius() + Units.toProjectUnits(initialShuttleHeightFromSurfaceMeters);
             const initialModelZPosition = Units.toProjectUnits(initialShuttleWidthOffsetMeters);
@@ -168,71 +175,125 @@ export class SpaceShuttle {
     }
 
     _setupFireEffects() {
-   
         const shuttleFirePositions = [
-
-            new THREE.Vector3( 0,6.65, -2.5), 
-          
+            new THREE.Vector3(0, 6.65, -2.5),
         ];
 
         shuttleFirePositions.forEach(pos => {
-            const ps = new CustomParticleSystem(this.camera, this.shuttle, '/texture/fire.png'); 
-         
-            ps._points.position.copy(pos); 
+            const ps = new CustomParticleSystem(this.camera, this.shuttle, '/texture/fire.png');
+            ps._points.position.copy(pos);
             this.mainEngineParticleSystems.push(ps);
-            
-          
         });
 
-      
         const srb1FirePosition = new THREE.Vector3(
             -1, 5.1, -4
         );
-        
-         const psRocket1 = new CustomParticleSystem(this.camera, this.rocket1, '/texture/fire.png'); 
-     
+
+        const psRocket1 = new CustomParticleSystem(this.camera, this.rocket1, '/texture/fire.png');
         psRocket1._points.position.copy(srb1FirePosition);
         this.srbParticleSystems.push(psRocket1);
-       
 
-        
+
         const srb2FirePosition = new THREE.Vector3(
             1, 5.1, -4
         );
-        
-        const psRocket2 = new CustomParticleSystem(this.camera, this.rocket2, '/texture/fire.png'); 
-      
+
+        const psRocket2 = new CustomParticleSystem(this.camera, this.rocket2, '/texture/fire.png');
         psRocket2._points.position.copy(srb2FirePosition);
         this.srbParticleSystems.push(psRocket2);
-     
-              const smokePosition2 = new THREE.Vector3(
-                0,6, -8
-            );
-            
-            const pssmoke2 = new CustomParticleSmoke(this.camera, this.rocket2, '/texture/smoke.png'); 
-       
-            pssmoke2._points.position.copy(smokePosition2);
-            this.srbParticleSystems.push(pssmoke2);
-        
 
-          
-        const smokePosition = new THREE.Vector3(
-            0, 4,-3
+        const smokePosition2 = new THREE.Vector3(
+            0, 6, -8
         );
-        
-        const pssmoke = new CustomParticleSmoke(this.camera, this.rocket2, '/texture/smoke.png'); 
-    
+
+        const pssmoke2 = new CustomParticleSmoke(this.camera, this.rocket2, '/texture/smoke.png');
+        pssmoke2._points.position.copy(smokePosition2);
+        this.srbParticleSystems.push(pssmoke2);
+
+
+        const smokePosition = new THREE.Vector3(
+            0, 4, -3
+        );
+
+        const pssmoke = new CustomParticleSmoke(this.camera, this.rocket2, '/texture/smoke.png');
         pssmoke._points.position.copy(smokePosition);
         this.smokeParticleSystem.push(pssmoke);
+    }
 
+    /**
+     * Detaches a given part from the main shuttle model and adds it to the scene
+     * with an initial velocity and angular velocity to simulate falling.
+     * @param {THREE.Object3D} part - The Three.js object to detach (e.g., this.rocket1, this.fuelTank).
+     * @param {number} [initialPushX=0] - Initial push along the X-axis (in meters/second).
+     * @param {number} [initialPushY=-1] - Initial push along the Y-axis (in meters/second, negative for downwards).
+     * @param {number} [initialPushZ=0] - Initial push along the Z-axis (in meters/second).
+     */
+    detachPart(part, initialPushX = 0, initialPushY = -1, initialPushZ = 0) { // Default initialY changed to -1 for slower fall
+        if (!part || !part.parent) {
+            console.warn('Cannot detach part: part is null or has no parent.');
+            return;
+        }
 
-        
+        // 1. Get world position and rotation before detaching
+        const worldPosition = new THREE.Vector3();
+        const worldQuaternion = new THREE.Quaternion();
+        part.getWorldPosition(worldPosition);
+        part.getWorldQuaternion(worldQuaternion);
 
-        
+        // 2. Remove from current parent (shuttle model group)
+        part.parent.remove(part);
+
+        // 3. Add to the main scene
+        this.scene.add(part);
+
+        // 4. Set its new world position and rotation
+        part.position.copy(worldPosition);
+        part.setRotationFromQuaternion(worldQuaternion);
+
+        // 5. Initialize velocity and angular velocity
+        // Convert initial push from real meters/second to project units/second
+        // NOTE: The direction of the push is relative to the WORLD COORDINATES
+        // This is why a small Z push might appear "towards" the camera if the camera
+        // is aligned with the world Z axis or the shuttle's local Z axis.
+        // To push "outwards" from the shuttle's side, we need to consider the shuttle's
+        // local X and Z axes relative to the world.
+
+        // Get the shuttle's current world orientation
+        const shuttleWorldQuaternion = new THREE.Quaternion();
+        this.model.getWorldQuaternion(shuttleWorldQuaternion); // Get the main shuttle model's world rotation
+
+        // Define local push vectors (e.g., 1 meter to the side, 0.5 meters "outwards" from back)
+        const localPushVector = new THREE.Vector3(initialPushX, initialPushY, initialPushZ);
+
+        // Transform the local push vector into world coordinates based on the shuttle's orientation
+        localPushVector.applyQuaternion(shuttleWorldQuaternion);
+
+        const velocity = new THREE.Vector3(
+            Units.toProjectUnits(localPushVector.x),
+            Units.toProjectUnits(localPushVector.y),
+            Units.toProjectUnits(localPushVector.z)
+        );
+
+        // Make angular velocity very small or zero for less random rotation
+        const angularVelocity = new THREE.Vector3(
+            (Math.random() - 0.5) * 0.01, // Very slight random wobble
+            (Math.random() - 0.5) * 0.01,
+            (Math.random() - 0.5) * 0.01
+            // Or set to (0, 0, 0) for no rotation:
+            // 0, 0, 0
+        );
+
+        this.detachedParts.push({
+            model: part,
+            velocity: velocity,
+            angularVelocity: angularVelocity,
+            initialWorldYPosition: part.position.y // Store initial Y position for threshold
+        });
+
+        console.log(`Part detached: ${part.name || 'Unnamed Part'} at world Y: ${worldPosition.y.toFixed(2)}`);
     }
 
     update(deltaTime) {
-     
         if (this.model) {
             if (this.physics.stage === ShuttleStages.IDLE) {
                 this.model.position.copy(this.initialModelPosition);
@@ -240,6 +301,9 @@ export class SpaceShuttle {
                 this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(false));
                 this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
                 this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
+                // Clear detached parts if we return to idle
+                this.detachedParts.forEach(part => this.scene.remove(part.model));
+                this.detachedParts = [];
             } else {
                 this.physics.update(deltaTime);
 
@@ -263,16 +327,14 @@ export class SpaceShuttle {
 
                 this.model.rotation.copy(this.initialModelRotation);
 
-            
                 this.mainEngineParticleSystems.forEach(ps => ps.update(deltaTime));
                 this.srbParticleSystems.forEach(ps => ps.update(deltaTime));
                 this.smokeParticleSystem.forEach(ps => ps.update(deltaTime));
-               
 
                 switch (this.physics.stage) {
                     case ShuttleStages.ENGINE_STARTUP:
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
-                        this.srbParticleSystems.forEach(ps => ps.setVisibility(true)); 
+                        this.srbParticleSystems.forEach(ps => ps.setVisibility(true));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(true));
                         this.playSounds(true);
                         break;
@@ -280,23 +342,26 @@ export class SpaceShuttle {
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
                         this.srbParticleSystems.forEach(ps => ps.setVisibility(true));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
-                        this.playSounds(false); 
-                        this.playSoundsLunch(true); 
+                        this.playSounds(false);
+                        this.playSoundsLunch(true);
                         break;
                     case ShuttleStages.ATMOSPHERIC_ASCENT:
                         if (this.physics.srbDetached && this.rocket1.parent) {
-                            this.model.remove(this.rocket1);
-                            this.model.remove(this.rocket2);
-                            this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
-                            console.log("Visual: SRBs removed from scene.");
+                            // SRB1 (الصاروخ الأيسر): ابعده 1 متر لليسار (-X)، وسقطه ببطء (-Y)، وادفعه 0.5 متر للخارج/الخلف (Z+)
+                            this.detachPart(this.rocket1, -1, -0.5, 0.5);
+                            // SRB2 (الصاروخ الأيمن): ابعده 1 متر لليمين (+X)، وسقطه ببطء (-Y)، وادفعه 0.5 متر للخارج/الخلف (Z+)
+                            this.detachPart(this.rocket2, 1, -0.5, 0.5);
+                            this.srbParticleSystems.forEach(ps => ps.setVisibility(false)); // Turn off SRB effects
+                            console.log("Visual: SRBs detached and falling.");
                         }
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
                         break;
                     case ShuttleStages.ORBITAL_INSERTION:
                         if (this.physics.etDetached && this.fuelTank.parent) {
-                            this.model.remove(this.fuelTank);
-                            console.log("Visual: External Fuel Tank removed from scene.");
+                            // الخزان الخارجي: لا يوجد دفع جانبي (0 X)، سقطه ببطء (-Y)، وادفعه 1 متر للخارج/الخلف (Z+)
+                            this.detachPart(this.fuelTank, 0, -1, 1);
+                            console.log("Visual: External Fuel Tank detached and falling.");
                         }
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(false));
                         this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
@@ -311,39 +376,84 @@ export class SpaceShuttle {
                         this.playSoundsLunch(false);
                         break;
                     case ShuttleStages.ORBITAL_MANEUVERING:
-                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true)); 
-                        this.srbParticleSystems.forEach(ps => ps.setVisibility(false)); 
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
+                        this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
-                        this.playSoundsLunch(true); 
+                        this.playSoundsLunch(true);
                         break;
                 }
             }
+
+            // ******** Update detached parts' physics and visual state ********
+            const gravityProjectUnits = Units.toProjectUnits(this.gravityConstant);
+            const thresholdProjectUnits = Units.toProjectUnits(this.DETACHED_PART_FALL_THRESHOLD_METERS);
+
+            for (let i = this.detachedParts.length - 1; i >= 0; i--) {
+                const part = this.detachedParts[i];
+
+                // Apply gravity to vertical velocity (slowed down for visual effect)
+                part.velocity.y += (gravityProjectUnits * 0.1) * deltaTime; // Gravity reduced to 10% for slower fall
+
+                // Apply velocity to position
+                part.model.position.addScaledVector(part.velocity, deltaTime);
+
+                // Apply angular velocity to rotation
+                part.model.rotation.x += part.angularVelocity.x;
+                part.model.rotation.y += part.angularVelocity.y;
+                part.model.rotation.z += part.angularVelocity.z;
+
+                // Remove part if it has fallen sufficiently far below its detachment point
+                if (part.initialWorldYPosition - part.model.position.y > thresholdProjectUnits) {
+                    this.scene.remove(part.model);
+                    this._disposeThreeObject(part.model); // Custom disposal function
+                    this.detachedParts.splice(i, 1); // Remove from array
+                    console.log(`Detached part removed from scene (fell past threshold): ${part.model.name || 'Unnamed Part'}`);
+                }
+            }
+            // **********************************************************************
         }
+    }
+
+    // Helper function to safely dispose of Three.js object resources
+    _disposeThreeObject(object) {
+        if (!object) return;
+
+        object.traverse((child) => {
+            if (child.isMesh) {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(material => {
+                            material.dispose();
+                            if (material.map) material.map.dispose();
+                            if (material.normalMap) material.normalMap.dispose();
+                            // Dispose other textures if applicable (e.g., roughnessMap, metalnessMap)
+                        });
+                    } else {
+                        child.material.dispose();
+                        if (child.material.map) child.material.map.dispose();
+                        if (child.material.normalMap) child.material.normalMap.dispose();
+                        // Dispose other textures if applicable
+                    }
+                }
+            }
+        });
     }
 
     dispose() {
         this.mainEngineParticleSystems.forEach(ps => ps.dispose());
         this.srbParticleSystems.forEach(ps => ps.dispose());
         this.smokeParticleSystem.forEach(ps => ps.dispose());
+
+        // Dispose detached parts that might still be in the scene
+        this.detachedParts.forEach(part => {
+            this.scene.remove(part.model);
+            this._disposeThreeObject(part.model);
+        });
+        this.detachedParts = []; // Clear the array
+
         if (this.model) {
-            this.model.traverse((child) => {
-                if (child.isMesh) {
-                    if (child.geometry) child.geometry.dispose();
-                    if (child.material) {
-                        if (Array.isArray(child.material)) {
-                            child.material.forEach(material => {
-                                material.dispose();
-                                if (material.map) material.map.dispose();
-                                if (material.normalMap) material.normalMap.dispose();
-                            });
-                        } else {
-                            child.material.dispose();
-                            if (child.material.map) child.material.map.dispose();
-                            if (child.material.normalMap) child.material.normalMap.map.dispose();
-                        }
-                    }
-                }
-            });
+            this._disposeThreeObject(this.model); // Dispose the main shuttle model
             if (this.model.parent) {
                 this.model.parent.remove(this.model);
             }

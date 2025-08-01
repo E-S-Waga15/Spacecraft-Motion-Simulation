@@ -5,7 +5,7 @@ import { Earth } from "../objects/Earth";
 import { FreeLookCamera } from "../camera/FreeLookCamera";
 import { ShuttleTrackingCamera } from "../camera/ShuttleTrackingCamera";
 import { LaunchPad } from "../objects/LaunchPad";
-import { SpaceShuttle } from "../objects/SpaceShuttle";
+import { SpaceShuttle } from "../objects/SpaceShuttle"; // Make sure this path is correct
 import { WaterObject } from "../objects/Water";
 import { Units } from "../utils/Units";
 import { ShuttlePhysics } from "../physics/ShuttlePhysics";
@@ -22,10 +22,10 @@ export class MainScene {
     this.isInitialized = false;
 
     this.shuttlePhysics = new ShuttlePhysics();
-    
+
     this.freeLookCamera = null;
     this.shuttleTrackingCamera = null;
-    this.activeCamera = null; 
+    this.activeCamera = null;
 
     this.spacebarPressed = false;
 
@@ -83,15 +83,16 @@ export class MainScene {
 
       // 🚀 الخطوة الرئيسية: تهيئة الكاميرات أولاً قبل SpaceShuttle
       this.freeLookCamera = new FreeLookCamera(this.earth);
-      
-      // ✅ تمرير الكاميرا النشطة حالياً (FreeLookCamera) إلى SpaceShuttle constructor
+
+      // ✅ تمرير الكاميرا النشطة حالياً (FreeLookCamera) و الـ scene إلى SpaceShuttle constructor
       this.spaceShuttle = new SpaceShuttle(
-        this.earth, 
-        this.shuttlePhysics, 
-        this.freeLookCamera.getCamera() 
-      ); 
+        this.earth,
+        this.shuttlePhysics,
+        this.freeLookCamera.getCamera(),
+        this.scene // <--- ADDED THIS LINE: Pass the scene object here
+      );
       this.spaceShuttle.setAudioListener(audioListener);
-      const shuttleModel = await this.spaceShuttle.load(); 
+      const shuttleModel = await this.spaceShuttle.load();
       if (shuttleModel) {
         this.scene.add(shuttleModel);
       }
@@ -102,7 +103,7 @@ export class MainScene {
       // الآن بعد تحميل shuttleModel وتهيئته، يمكننا إنشاء ShuttleTrackingCamera
       // لأنها تحتاج إلى this.spaceShuttle.model
       this.shuttleTrackingCamera = new ShuttleTrackingCamera(
-        this.spaceShuttle.model 
+        this.spaceShuttle.model
       );
 
       this.activeCamera = this.freeLookCamera.getCamera();

@@ -39,8 +39,8 @@ export const PhysicsConstants = {
     ORBITAL_VELOCITY_TOLERANCE: 50, // m/s (tolerance for orbital insertion velocity)
 
     // Detachment Altitudes and Times
-    SRB_DETACH_ALTITUDE: 45000, // meters
-    SRB_DETACH_TIME: 120, // seconds
+    SRB_DETACH_ALTITUDE: 11000, // meters
+    SRB_DETACH_TIME: 60, // seconds
 
     FUEL_TANK_DETACH_ALTITUDE: 110000, // meters
     FUEL_TANK_DETACH_TIME: 480, // seconds
