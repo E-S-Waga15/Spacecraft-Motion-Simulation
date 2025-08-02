@@ -29,8 +29,8 @@ export class ShuttlePhysics {
         this.srbDetached = false;
         this.etDetached = false;
 
-        this.launchPad = null; 
-        this.towerTilted = false; 
+        this.launchPad = null;
+        this.towerTilted = false;
 
         console.log("ShuttlePhysics Initialized:");
         console.log(`  Initial Position: (${this.position.x.toFixed(0)}, ${this.position.y.toFixed(0)}, ${this.position.z.toFixed(0)}) m (from Earth center)`);
@@ -292,14 +292,14 @@ export class ShuttlePhysics {
 
         this.time += deltaTime;
 
-       
+
         if (this.stage === ShuttleStages.ENGINE_STARTUP) {
             this.engineStartupTimer += deltaTime;
         } else {
             this.engineStartupTimer = 0;
         }
 
-     
+
         this.updateStage(currentAltitude, deltaTime);
         this.handleComponentDetachment(currentAltitude, this.time, this.velocity.length());
 
@@ -323,7 +323,7 @@ export class ShuttlePhysics {
             case ShuttleStages.IDLE:
                 break;
             case ShuttleStages.ENGINE_STARTUP:
-              
+
                 if (this.engineStartupTimer >= (PhysicsConstants.ENGINE_STARTUP_DURATION - 2) && !this.towerTilted) {
                     if (this.launchPad && this.launchPad.towerModel) {
                         this.launchPad.tiltTower(90);

@@ -6,34 +6,469 @@ import { Units } from '../utils/Units';
 import { ShuttlePhysics } from '../physics/ShuttlePhysics';
 import { ShuttleStages } from '../constants/ShuttleStages';
 import { PhysicsConstants } from '../constants/PhysicsConstants';
-import { CustomParticleSystem } from '../Effects/CustomParticleFire'; 
+import { CustomParticleSystem } from '../Effects/CustomParticleFire';
 import { CustomParticleSmoke } from '../Effects/CustomParticleSmoke';
 
 export class SpaceShuttle {
-    constructor(earth, physics, camera) { 
+    constructor(earth, physics, camera) {
         this.earth = earth;
-        this.model = null; 
+        this.model = null;
         this.rotationSpeed = 0;
 
-        this.shuttle = null;   
-        this.fuelTank = null;  
-        this.rocket1 = null;   
-        this.rocket2 = null;   
+        this.shuttle = null;
+        this.fuelTank = null;
+        this.rocket1 = null;
+        this.rocket2 = null;
 
         this.physics = physics;
         this.audioListener = null;
-        this.camera = camera; 
+        this.camera = camera;
 
         this.initialModelPosition = null;
-        this.initialModelRotation = new THREE.Euler(-Math.PI / 2, 0, -Math.PI / 2); 
+        this.initialModelRotation = new THREE.Euler(-Math.PI / 2, 0, -Math.PI / 2);
 
-        this.mainEngineParticleSystems = []; 
-        this.srbParticleSystems = [];       
-        this.smokeParticleSystem = []; 
+        this.mainEngineParticleSystems = [];
+        this.srbParticleSystems = [];
+        this.smokeParticleSystem = [];
+
+        this.rocketDetachmentAnimation = {
+            rocket1: {
+                isDetaching: false,
+                startTime: 0,
+                duration: 3.0,
+                startPosition: new THREE.Vector3(),
+                startRotation: new THREE.Euler(),
+                velocity: new THREE.Vector3(),
+                angularVelocity: new THREE.Euler(),
+                smokeParticles: []
+            },
+            rocket2: {
+                isDetaching: false,
+                startTime: 0,
+                duration: 3.0,
+                startPosition: new THREE.Vector3(),
+                startRotation: new THREE.Euler(),
+                velocity: new THREE.Vector3(),
+                angularVelocity: new THREE.Euler(),
+                smokeParticles: []
+            }
+        };
+
+        this.fuelTankDetachmentAnimation = {
+            isDetaching: false,
+            startTime: 0,
+            duration: 5.0,
+            startPosition: new THREE.Vector3(),
+            startRotation: new THREE.Euler(),
+            velocity: new THREE.Vector3(),
+            angularVelocity: new THREE.Euler(),
+            smokeParticles: [],
+            explosionParticles: []
+        };
     }
 
     setAudioListener(listener) {
         this.audioListener = listener;
+    }
+
+    startRocketDetachmentAnimation(rocketName) {
+        const animation = this.rocketDetachmentAnimation[rocketName];
+        if (!animation || animation.isDetaching) return;
+
+        const rocket = rocketName === 'rocket1' ? this.rocket1 : this.rocket2;
+        if (!rocket) return;
+
+        animation.isDetaching = true;
+        animation.startTime = this.physics.time;
+        animation.startPosition.copy(rocket.position);
+        animation.startRotation.copy(rocket.rotation);
+
+        const rocketIndex = rocketName === 'rocket1' ? -1 : 1;
+        animation.velocity.set(
+            rocketIndex * (15 + Math.random() * 10),
+            -20 - Math.random() * 15,
+            (Math.random() - 0.5) * 10
+        );
+
+        animation.angularVelocity.set(
+            (Math.random() - 0.5) * 3,
+            (Math.random() - 0.5) * 2,
+            rocketIndex * (1 + Math.random())
+        );
+
+        console.log(`Starting detachment animation for ${rocketName} with velocity:`, animation.velocity);
+    }
+
+    startFuelTankDetachmentAnimation() {
+        const animation = this.fuelTankDetachmentAnimation;
+        if (!animation || animation.isDetaching) return;
+
+        if (!this.fuelTank) return;
+
+        animation.isDetaching = true;
+        animation.startTime = this.physics.time;
+        animation.startPosition.copy(this.fuelTank.position);
+        animation.startRotation.copy(this.fuelTank.rotation);
+
+        animation.velocity.set(
+            (Math.random() - 0.5) * 20,
+            -25 - Math.random() * 15,
+            (Math.random() - 0.5) * 20
+        );
+        animation.angularVelocity.set(
+            (Math.random() - 0.5) * 2.5,
+            (Math.random() - 0.5) * 2.0,
+            (Math.random() - 0.5) * 2.5
+        );
+
+        this.addFuelTankExplosionParticles(this.fuelTank.position);
+
+        console.log(`Starting fuel tank detachment animation with velocity:`, animation.velocity);
+    }
+
+    updateRocketDetachmentAnimation(deltaTime) {
+        const currentTime = this.physics.time;
+
+        ['rocket1', 'rocket2'].forEach(rocketName => {
+            const animation = this.rocketDetachmentAnimation[rocketName];
+            if (!animation || !animation.isDetaching) return;
+
+            const rocket = rocketName === 'rocket1' ? this.rocket1 : this.rocket2;
+            if (!rocket) return;
+
+            const elapsedTime = currentTime - animation.startTime;
+            const progress = elapsedTime / animation.duration;
+
+            if (progress >= 1.0) {
+                if (rocket.parent) {
+                    rocket.parent.remove(rocket);
+                }
+                animation.isDetaching = false;
+                console.log(`${rocketName} removed after animation`);
+                return;
+            }
+
+            const newPosition = animation.startPosition.clone();
+            newPosition.add(animation.velocity.clone().multiplyScalar(elapsedTime));
+
+            const gravityEffect = -0.5 * 9.81 * elapsedTime * elapsedTime;
+            newPosition.y += gravityEffect;
+
+            rocket.position.copy(newPosition);
+
+            const newRotation = animation.startRotation.clone();
+            const rotationDamping = Math.exp(-elapsedTime * 0.5);
+            newRotation.x += animation.angularVelocity.x * elapsedTime * rotationDamping;
+            newRotation.y += animation.angularVelocity.y * elapsedTime * rotationDamping;
+            newRotation.z += animation.angularVelocity.z * elapsedTime * rotationDamping;
+            rocket.rotation.copy(newRotation);
+
+            const fadeProgress = Math.pow(progress, 1.5);
+            const alpha = 1.0 - fadeProgress * 0.7;
+            rocket.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(material => {
+                            if (material.opacity !== undefined) {
+                                material.opacity = alpha;
+                                material.transparent = true;
+                            }
+                        });
+                    } else {
+                        if (child.material.opacity !== undefined) {
+                            child.material.opacity = alpha;
+                            child.material.transparent = true;
+                        }
+                    }
+                }
+            });
+
+            if (Math.random() < 0.3) {
+                this.addSmokeParticle(rocket.position, animation);
+            }
+        });
+    }
+
+    updateFuelTankDetachmentAnimation(deltaTime) {
+        const animation = this.fuelTankDetachmentAnimation;
+        if (!animation || !animation.isDetaching) return;
+
+        if (!this.fuelTank) return;
+
+        const currentTime = this.physics.time;
+        const elapsedTime = currentTime - animation.startTime;
+        const progress = elapsedTime / animation.duration;
+
+        if (progress >= 1.0) {
+            if (this.fuelTank.parent) {
+                this.fuelTank.parent.remove(this.fuelTank);
+            }
+            animation.isDetaching = false;
+            console.log("Fuel tank removed after animation");
+            return;
+        }
+
+        const newPosition = animation.startPosition.clone();
+        newPosition.add(animation.velocity.clone().multiplyScalar(elapsedTime));
+
+        const gravityEffect = -0.5 * 9.81 * elapsedTime * elapsedTime;
+        newPosition.y += gravityEffect;
+
+        this.fuelTank.position.copy(newPosition);
+
+        const newRotation = animation.startRotation.clone();
+        const rotationDamping = Math.exp(-elapsedTime * 0.4);
+        newRotation.x += animation.angularVelocity.x * elapsedTime * rotationDamping;
+        newRotation.y += animation.angularVelocity.y * elapsedTime * rotationDamping;
+        newRotation.z += animation.angularVelocity.z * elapsedTime * rotationDamping;
+        this.fuelTank.rotation.copy(newRotation);
+
+        const fadeProgress = Math.pow(progress, 1.5);
+        const alpha = 1.0 - fadeProgress * 0.7;
+        this.fuelTank.traverse((child) => {
+            if (child.isMesh && child.material) {
+                if (Array.isArray(child.material)) {
+                    child.material.forEach(material => {
+                        if (material.opacity !== undefined) {
+                            material.opacity = alpha;
+                            material.transparent = true;
+                        }
+                    });
+                } else {
+                    if (child.material.opacity !== undefined) {
+                        child.material.opacity = alpha;
+                        child.material.transparent = true;
+                    }
+                }
+            }
+        });
+
+        if (Math.random() < 0.3) {
+            this.addFuelTankSmokeParticle(this.fuelTank.position, animation);
+        }
+    }
+
+    addFuelTankSmokeParticle(position, animation) {
+        const smokeParticle = {
+            position: position.clone(),
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 10,
+                Math.random() * 4 + 1,
+                (Math.random() - 0.5) * 10
+            ),
+            life: 2.0 + Math.random() * 1.0,
+            maxLife: 2.0 + Math.random() * 1.0,
+            size: Math.random() * 4 + 2,
+            color: new THREE.Color(
+                0.6 + Math.random() * 0.3,
+                0.6 + Math.random() * 0.3,
+                0.6 + Math.random() * 0.3
+            )
+        };
+
+        animation.smokeParticles.push(smokeParticle);
+    }
+
+    addFuelTankExplosionParticles(position) {
+        for (let i = 0; i < 15; i++) {
+            const explosionParticle = {
+                position: position.clone(),
+                velocity: new THREE.Vector3(
+                    (Math.random() - 0.5) * 30,
+                    Math.random() * 20 + 10,
+                    (Math.random() - 0.5) * 30
+                ),
+                life: 1.0 + Math.random() * 0.5,
+                maxLife: 1.0 + Math.random() * 0.5,
+                size: Math.random() * 5 + 3,
+                color: new THREE.Color(
+                    0.8 + Math.random() * 0.2,
+                    0.6 + Math.random() * 0.2,
+                    0.3 + Math.random() * 0.2
+                )
+            };
+
+            this.fuelTankDetachmentAnimation.explosionParticles.push(explosionParticle);
+        }
+    }
+
+    isRocketDetaching() {
+        return this.rocketDetachmentAnimation.rocket1.isDetaching ||
+            this.rocketDetachmentAnimation.rocket2.isDetaching;
+    }
+
+    getDetachingRockets() {
+        const detachingRockets = [];
+        if (this.rocketDetachmentAnimation.rocket1.isDetaching) {
+            detachingRockets.push(this.rocket1);
+        }
+        if (this.rocketDetachmentAnimation.rocket2.isDetaching) {
+            detachingRockets.push(this.rocket2);
+        }
+        return detachingRockets;
+    }
+
+    isFuelTankDetaching() {
+        return this.fuelTankDetachmentAnimation.isDetaching;
+    }
+
+    getDetachingFuelTank() {
+        return this.fuelTankDetachmentAnimation.isDetaching ? this.fuelTank : null;
+    }
+
+    addSmokeParticle(position, animation) {
+        const smokeParticle = {
+            position: position.clone(),
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 8,
+                (Math.random() - 0.5) * 8
+            ),
+            life: 1.5 + Math.random() * 1.0,
+            maxLife: 1.5 + Math.random() * 1.0,
+            size: Math.random() * 2 + 0.5,
+            color: new THREE.Color(
+                0.6 + Math.random() * 0.2,
+                0.6 + Math.random() * 0.2,
+                0.6 + Math.random() * 0.2
+            )
+        };
+
+        animation.smokeParticles.push(smokeParticle);
+    }
+
+    updateSmokeParticles(deltaTime) {
+        ['rocket1', 'rocket2'].forEach(rocketName => {
+            const animation = this.rocketDetachmentAnimation[rocketName];
+            if (!animation || !animation.isDetaching) return;
+
+            for (let i = animation.smokeParticles.length - 1; i >= 0; i--) {
+                const particle = animation.smokeParticles[i];
+                particle.life -= deltaTime;
+
+                if (particle.life <= 0) {
+                    animation.smokeParticles.splice(i, 1);
+                    continue;
+                }
+
+                particle.position.add(particle.velocity.clone().multiplyScalar(deltaTime));
+
+                particle.velocity.y -= 9.81 * deltaTime;
+
+                particle.velocity.multiplyScalar(0.98);
+            }
+        });
+    }
+
+    updateFuelTankSmokeParticles(deltaTime) {
+        const animation = this.fuelTankDetachmentAnimation;
+        if (!animation || !animation.isDetaching) return;
+
+        for (let i = animation.smokeParticles.length - 1; i >= 0; i--) {
+            const particle = animation.smokeParticles[i];
+            particle.life -= deltaTime;
+
+            if (particle.life <= 0) {
+                animation.smokeParticles.splice(i, 1);
+                continue;
+            }
+
+            particle.position.add(particle.velocity.clone().multiplyScalar(deltaTime));
+
+            particle.velocity.y -= 9.81 * deltaTime;
+
+            particle.velocity.multiplyScalar(0.98);
+        }
+
+        for (let i = animation.explosionParticles.length - 1; i >= 0; i--) {
+            const particle = animation.explosionParticles[i];
+            particle.life -= deltaTime;
+
+            if (particle.life <= 0) {
+                animation.explosionParticles.splice(i, 1);
+                continue;
+            }
+
+            particle.position.add(particle.velocity.clone().multiplyScalar(deltaTime));
+
+            particle.velocity.y -= 9.81 * deltaTime;
+
+            particle.velocity.multiplyScalar(0.95);
+        }
+    }
+
+    renderSmokeParticles(scene) {
+        ['rocket1', 'rocket2'].forEach(rocketName => {
+            const animation = this.rocketDetachmentAnimation[rocketName];
+            if (!animation || !animation.isDetaching) return;
+
+            animation.smokeParticles.forEach(particle => {
+                const geometry = new THREE.SphereGeometry(particle.size * 0.1, 8, 8);
+                const material = new THREE.MeshBasicMaterial({
+                    color: particle.color,
+                    transparent: true,
+                    opacity: particle.life / particle.maxLife * 0.5
+                });
+
+                const smokeMesh = new THREE.Mesh(geometry, material);
+                smokeMesh.position.copy(particle.position);
+                scene.add(smokeMesh);
+
+                setTimeout(() => {
+                    if (smokeMesh.parent) {
+                        smokeMesh.parent.remove(smokeMesh);
+                    }
+                    geometry.dispose();
+                    material.dispose();
+                }, 16);
+            });
+        });
+    }
+
+    renderFuelTankSmokeParticles(scene) {
+        const animation = this.fuelTankDetachmentAnimation;
+        if (!animation || !animation.isDetaching) return;
+
+        animation.smokeParticles.forEach(particle => {
+            const geometry = new THREE.SphereGeometry(particle.size * 0.12, 8, 8);
+            const material = new THREE.MeshBasicMaterial({
+                color: particle.color,
+                transparent: true,
+                opacity: particle.life / particle.maxLife * 0.5
+            });
+
+            const smokeMesh = new THREE.Mesh(geometry, material);
+            smokeMesh.position.copy(particle.position);
+            scene.add(smokeMesh);
+
+            setTimeout(() => {
+                if (smokeMesh.parent) {
+                    smokeMesh.parent.remove(smokeMesh);
+                }
+                geometry.dispose();
+                material.dispose();
+            }, 16);
+        });
+
+        animation.explosionParticles.forEach(particle => {
+            const geometry = new THREE.SphereGeometry(particle.size * 0.2, 8, 8);
+            const material = new THREE.MeshBasicMaterial({
+                color: particle.color,
+                transparent: true,
+                opacity: particle.life / particle.maxLife * 0.8
+            });
+
+            const explosionMesh = new THREE.Mesh(geometry, material);
+            explosionMesh.position.copy(particle.position);
+            scene.add(explosionMesh);
+
+            setTimeout(() => {
+                if (explosionMesh.parent) {
+                    explosionMesh.parent.remove(explosionMesh);
+                }
+                geometry.dispose();
+                material.dispose();
+            }, 16);
+        });
     }
 
     toggleEngineEffects(enable) {
@@ -54,7 +489,7 @@ export class SpaceShuttle {
                 });
             } else if (!play && this.engineSound) {
                 this.engineSound.stop();
-                this.engineSound.disconnect(); 
+                this.engineSound.disconnect();
                 this.engineSound = null;
             }
         }
@@ -74,7 +509,7 @@ export class SpaceShuttle {
                 });
             } else if (!play && this.lunchSound) {
                 this.lunchSound.stop();
-                this.lunchSound.disconnect(); 
+                this.lunchSound.disconnect();
                 this.lunchSound = null;
             }
         }
@@ -107,35 +542,35 @@ export class SpaceShuttle {
         });
     }
 
-    async load() { 
+    async load() {
         try {
             this.model = new THREE.Group();
 
-            this.shuttle = await this.loadModel('/models/space_shuttle/space_shuttle.glb', 
-                { x: 0, y: 0, z: 0 }, 
-                { x: -Math.PI / 2, y: 0, z: -Math.PI } 
+            this.shuttle = await this.loadModel('/models/space_shuttle/space_shuttle.glb',
+                { x: 0, y: 0, z: 0 },
+                { x: -Math.PI / 2, y: 0, z: -Math.PI }
             );
             this.model.add(this.shuttle);
 
-            this.fuelTank = await this.loadModel('/models/fuel_tank/fuel_tank.glb', 
-                { x: 0, y: 0, z: 0 }, 
+            this.fuelTank = await this.loadModel('/models/fuel_tank/fuel_tank.glb',
+                { x: 0, y: 0, z: 0 },
                 { x: -Math.PI / 2, y: 0, z: -Math.PI }
             );
             this.model.add(this.fuelTank);
 
-            this.rocket1 = await this.loadModel('/models/rocket/rocket_1.glb', 
-                { x: 0, y: 0, z: 0 }, 
+            this.rocket1 = await this.loadModel('/models/rocket/rocket_1.glb',
+                { x: 0, y: 0, z: 0 },
                 { x: -Math.PI / 2, y: 0, z: -Math.PI }
             );
             this.model.add(this.rocket1);
 
-            this.rocket2 = await this.loadModel('/models/rocket/rocket_2.glb', 
-                { x: 0, y: 0, z: 0 }, 
+            this.rocket2 = await this.loadModel('/models/rocket/rocket_2.glb',
+                { x: 0, y: 0, z: 0 },
                 { x: -Math.PI / 2, y: 0, z: -Math.PI }
             );
             this.model.add(this.rocket2);
 
-            const targetRealHeightMeters = 45.46; 
+            const targetRealHeightMeters = 45.46;
             const box = new THREE.Box3().setFromObject(this.model);
             const currentModelHeight = box.max.y - box.min.y;
             const scaleFactor = Units.toProjectUnits(targetRealHeightMeters) / currentModelHeight;
@@ -143,8 +578,8 @@ export class SpaceShuttle {
 
             this._setupFireEffects();
 
-            const initialShuttleHeightFromSurfaceMeters = 22; 
-            const initialShuttleWidthOffsetMeters = -24; 
+            const initialShuttleHeightFromSurfaceMeters = 22;
+            const initialShuttleWidthOffsetMeters = -24;
 
             const initialModelYPosition = this.earth.getRadius() + Units.toProjectUnits(initialShuttleHeightFromSurfaceMeters);
             const initialModelZPosition = Units.toProjectUnits(initialShuttleWidthOffsetMeters);
@@ -168,71 +603,71 @@ export class SpaceShuttle {
     }
 
     _setupFireEffects() {
-   
+
         const shuttleFirePositions = [
 
-            new THREE.Vector3( 0,6.65, -2.5), 
-          
+            new THREE.Vector3(0, 6.65, -2.5),
+
         ];
 
         shuttleFirePositions.forEach(pos => {
-            const ps = new CustomParticleSystem(this.camera, this.shuttle, '/texture/fire.png'); 
-         
-            ps._points.position.copy(pos); 
+            const ps = new CustomParticleSystem(this.camera, this.shuttle, '/texture/fire.png');
+
+            ps._points.position.copy(pos);
             this.mainEngineParticleSystems.push(ps);
-            
-          
+
+
         });
 
-      
+
         const srb1FirePosition = new THREE.Vector3(
             -1, 5.1, -4
         );
-        
-         const psRocket1 = new CustomParticleSystem(this.camera, this.rocket1, '/texture/fire.png'); 
-     
+
+        const psRocket1 = new CustomParticleSystem(this.camera, this.rocket1, '/texture/fire.png');
+
         psRocket1._points.position.copy(srb1FirePosition);
         this.srbParticleSystems.push(psRocket1);
-       
 
-        
+
+
         const srb2FirePosition = new THREE.Vector3(
             1, 5.1, -4
         );
-        
-        const psRocket2 = new CustomParticleSystem(this.camera, this.rocket2, '/texture/fire.png'); 
-      
+
+        const psRocket2 = new CustomParticleSystem(this.camera, this.rocket2, '/texture/fire.png');
+
         psRocket2._points.position.copy(srb2FirePosition);
         this.srbParticleSystems.push(psRocket2);
-     
-              const smokePosition2 = new THREE.Vector3(
-                0,6, -8
-            );
-            
-            const pssmoke2 = new CustomParticleSmoke(this.camera, this.rocket2, '/texture/smoke.png'); 
-       
-            pssmoke2._points.position.copy(smokePosition2);
-            this.srbParticleSystems.push(pssmoke2);
-        
 
-          
-        const smokePosition = new THREE.Vector3(
-            0, 4,-3
+        const smokePosition2 = new THREE.Vector3(
+            0, 6, -8
         );
-        
-        const pssmoke = new CustomParticleSmoke(this.camera, this.rocket2, '/texture/smoke.png'); 
-    
+
+        const pssmoke2 = new CustomParticleSmoke(this.camera, this.rocket2, '/texture/smoke.png');
+
+        pssmoke2._points.position.copy(smokePosition2);
+        this.srbParticleSystems.push(pssmoke2);
+
+
+
+        const smokePosition = new THREE.Vector3(
+            0, 4, -3
+        );
+
+        const pssmoke = new CustomParticleSmoke(this.camera, this.rocket2, '/texture/smoke.png');
+
         pssmoke._points.position.copy(smokePosition);
         this.smokeParticleSystem.push(pssmoke);
 
 
-        
 
-        
+
+
     }
 
     update(deltaTime) {
-     
+
         if (this.model) {
             if (this.physics.stage === ShuttleStages.IDLE) {
                 this.model.position.copy(this.initialModelPosition);
@@ -263,16 +698,20 @@ export class SpaceShuttle {
 
                 this.model.rotation.copy(this.initialModelRotation);
 
-            
+
                 this.mainEngineParticleSystems.forEach(ps => ps.update(deltaTime));
                 this.srbParticleSystems.forEach(ps => ps.update(deltaTime));
                 this.smokeParticleSystem.forEach(ps => ps.update(deltaTime));
-               
+
+                this.updateRocketDetachmentAnimation(deltaTime);
+                this.updateSmokeParticles(deltaTime);
+                this.updateFuelTankDetachmentAnimation(deltaTime);
+                this.updateFuelTankSmokeParticles(deltaTime);
 
                 switch (this.physics.stage) {
                     case ShuttleStages.ENGINE_STARTUP:
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
-                        this.srbParticleSystems.forEach(ps => ps.setVisibility(true)); 
+                        this.srbParticleSystems.forEach(ps => ps.setVisibility(true));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(true));
                         this.playSounds(true);
                         break;
@@ -280,23 +719,26 @@ export class SpaceShuttle {
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
                         this.srbParticleSystems.forEach(ps => ps.setVisibility(true));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
-                        this.playSounds(false); 
-                        this.playSoundsLunch(true); 
+                        this.playSounds(false);
+                        this.playSoundsLunch(true);
                         break;
                     case ShuttleStages.ATMOSPHERIC_ASCENT:
-                        if (this.physics.srbDetached && this.rocket1.parent) {
-                            this.model.remove(this.rocket1);
-                            this.model.remove(this.rocket2);
+                        if (this.physics.srbDetached && this.rocket1.parent &&
+                            !this.rocketDetachmentAnimation.rocket1.isDetaching) {
+
+                            this.startRocketDetachmentAnimation('rocket1');
+                            this.startRocketDetachmentAnimation('rocket2');
                             this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
-                            console.log("Visual: SRBs removed from scene.");
+                            console.log("Visual: Starting SRB detachment animation.");
                         }
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
                         break;
                     case ShuttleStages.ORBITAL_INSERTION:
-                        if (this.physics.etDetached && this.fuelTank.parent) {
-                            this.model.remove(this.fuelTank);
-                            console.log("Visual: External Fuel Tank removed from scene.");
+                        if (this.physics.etDetached && this.fuelTank.parent &&
+                            !this.fuelTankDetachmentAnimation.isDetaching) {
+                            this.startFuelTankDetachmentAnimation();
+                            console.log("Visual: Starting fuel tank detachment animation.");
                         }
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(false));
                         this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
@@ -311,10 +753,10 @@ export class SpaceShuttle {
                         this.playSoundsLunch(false);
                         break;
                     case ShuttleStages.ORBITAL_MANEUVERING:
-                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true)); 
-                        this.srbParticleSystems.forEach(ps => ps.setVisibility(false)); 
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
+                        this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
-                        this.playSoundsLunch(true); 
+                        this.playSoundsLunch(true);
                         break;
                 }
             }

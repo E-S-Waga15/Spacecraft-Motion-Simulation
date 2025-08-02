@@ -22,10 +22,10 @@ export class MainScene {
     this.isInitialized = false;
 
     this.shuttlePhysics = new ShuttlePhysics();
-    
+
     this.freeLookCamera = null;
     this.shuttleTrackingCamera = null;
-    this.activeCamera = null; 
+    this.activeCamera = null;
 
     this.spacebarPressed = false;
 
@@ -83,15 +83,15 @@ export class MainScene {
 
       // 🚀 الخطوة الرئيسية: تهيئة الكاميرات أولاً قبل SpaceShuttle
       this.freeLookCamera = new FreeLookCamera(this.earth);
-      
+
       // ✅ تمرير الكاميرا النشطة حالياً (FreeLookCamera) إلى SpaceShuttle constructor
       this.spaceShuttle = new SpaceShuttle(
-        this.earth, 
-        this.shuttlePhysics, 
-        this.freeLookCamera.getCamera() 
-      ); 
+        this.earth,
+        this.shuttlePhysics,
+        this.freeLookCamera.getCamera()
+      );
       this.spaceShuttle.setAudioListener(audioListener);
-      const shuttleModel = await this.spaceShuttle.load(); 
+      const shuttleModel = await this.spaceShuttle.load();
       if (shuttleModel) {
         this.scene.add(shuttleModel);
       }
@@ -102,7 +102,7 @@ export class MainScene {
       // الآن بعد تحميل shuttleModel وتهيئته، يمكننا إنشاء ShuttleTrackingCamera
       // لأنها تحتاج إلى this.spaceShuttle.model
       this.shuttleTrackingCamera = new ShuttleTrackingCamera(
-        this.spaceShuttle.model 
+        this.spaceShuttle.model
       );
 
       this.activeCamera = this.freeLookCamera.getCamera();
@@ -205,6 +205,10 @@ export class MainScene {
 
       if (this.spaceShuttle) {
         this.spaceShuttle.update(deltaTime);
+
+        this.spaceShuttle.renderFuelTankSmokeParticles(this.scene);
+
+        this.spaceShuttle.renderSmokeParticles(this.scene);
       }
 
       if (this.freeLookCamera) {
