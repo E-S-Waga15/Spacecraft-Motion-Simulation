@@ -29,6 +29,13 @@ export class ShuttlePhysics {
         this.srbDetached = false;
         this.etDetached = false;
 
+        this.tiltAngle = 0;
+        this.targetTilt = 0;
+        this.tiltLocked = false;
+
+        this.forwardVector = new THREE.Vector3(0, 1, 0);
+        this.upVector = new THREE.Vector3(0, 1, 0);
+
         this.launchPad = null;
         this.towerTilted = false;
 
@@ -40,7 +47,8 @@ export class ShuttlePhysics {
 
 
     setLaunchPad(launchPad) {
-        this.launchPad = launchPad;
+        const newLocal = this;
+        newLocal.launchPad = launchPad;
     }
 
     calculateTotalMass() {
@@ -114,11 +122,23 @@ export class ShuttlePhysics {
 
         const dragCoefficient = PhysicsConstants.DRAG_COEFFICIENT;
         const crossSectionalArea = PhysicsConstants.CROSS_SECTIONAL_AREA;
+        // Angle-of-attack based effective area: minimal when aligned with velocity, maximal when broadside
+        let effectiveArea = crossSectionalArea;
+        const speedSq = velocity.lengthSq();
+        if (speedSq > 0.0001) {
+            const velDir = velocity.clone().normalize();
+            const fwdDir = this.forwardVector.clone().normalize();
+            const cosAoA = THREE.MathUtils.clamp(velDir.dot(fwdDir), -1, 1);
+            const aoa = Math.acos(cosAoA);
+            const areaScale = Math.sin(aoa); // 0 when aligned, 1 when 90 deg
+            // Keep some baseline frontal area even when aligned
+            effectiveArea = crossSectionalArea * (0.15 + 0.85 * areaScale);
+        }
 
-        const velocityMagnitudeSq = velocity.lengthSq();
+        const velocityMagnitudeSq = speedSq;
         if (velocityMagnitudeSq === 0 || isNaN(velocityMagnitudeSq) || !isFinite(velocityMagnitudeSq)) return new THREE.Vector3();
 
-        const dragForceMagnitude = 0.5 * airDensity * dragCoefficient * crossSectionalArea * velocityMagnitudeSq;
+        const dragForceMagnitude = 0.5 * airDensity * dragCoefficient * effectiveArea * velocityMagnitudeSq;
 
         if (isNaN(dragForceMagnitude) || !isFinite(dragForceMagnitude)) {
             console.warn("Drag force magnitude became NaN/Infinity. Returning zero force.");
@@ -128,52 +148,128 @@ export class ShuttlePhysics {
         return velocity.clone().normalize().multiplyScalar(-dragForceMagnitude);
     }
 
+    calculateThrustMagnitude() {
+    let currentThrustMagnitude = 0;
+
+    switch (this.stage) {
+        case ShuttleStages.IDLE:
+            currentThrustMagnitude = 0;
+            break;
+        case ShuttleStages.ENGINE_STARTUP:
+            currentThrustMagnitude = PhysicsConstants.THRUST_ENGINE_STARTUP;
+            break;
+        case ShuttleStages.LIFTOFF:
+            // During liftoff, use base thrust (SRBs provide most of the power)
+            if(this.fuelPercentage > 0) {
+                currentThrustMagnitude += PhysicsConstants.THRUST_MAIN_ENGINES;
+            }
+            if(this.isRocket1Attached) {
+                currentThrustMagnitude += (PhysicsConstants.THRUST_SOLID_ROCKETS / 2);
+            }
+            if (this.isRocket2Attached) {
+                currentThrustMagnitude += (PhysicsConstants.THRUST_SOLID_ROCKETS / 2);
+            }
+            break;
+        case ShuttleStages.GRAVITY_TURN: 
+            if(this.fuelPercentage > 0) {
+                const ssmeBase = PhysicsConstants.THRUST_MAIN_ENGINES;
+                // Boost after SRB detachment (45 km)
+                const ssmeBoost = this.srbDetached ? PhysicsConstants.MAIN_ENGINE_THRUST_BOOST_AFTER_SRB : 1.0;
+                currentThrustMagnitude += ssmeBase * ssmeBoost;
+            }
+            if(this.isRocket1Attached) {
+                currentThrustMagnitude += (PhysicsConstants.THRUST_SOLID_ROCKETS / 2);
+            }
+            if (this.isRocket2Attached) {
+                currentThrustMagnitude += (PhysicsConstants.THRUST_SOLID_ROCKETS / 2);
+            }
+            break;
+        case ShuttleStages.ATMOSPHERIC_ASCENT:
+            if (this.fuelPercentage > 0) {
+                const ssmeBase = PhysicsConstants.THRUST_MAIN_ENGINES;
+                // Boost after SRB detachment (45 km)
+                const ssmeBoost = this.srbDetached ? PhysicsConstants.MAIN_ENGINE_THRUST_BOOST_AFTER_SRB : 1.0;
+                currentThrustMagnitude += ssmeBase * ssmeBoost;
+            }
+            // If any SRB still attached for any reason, include its thrust
+            if (this.isRocket1Attached) {
+                currentThrustMagnitude += (PhysicsConstants.THRUST_SOLID_ROCKETS / 2);
+            }
+            if (this.isRocket2Attached) {
+                currentThrustMagnitude += (PhysicsConstants.THRUST_SOLID_ROCKETS / 2);
+            }
+            break;
+        case ShuttleStages.ORBITAL_INSERTION:
+            // During orbital insertion, provide thrust even after fuel tank detaches
+            // Use OMS thrust as primary and main engines if fuel is available
+            if (this.fuelPercentage > 0) {
+                const ssmeBase = PhysicsConstants.THRUST_MAIN_ENGINES;
+                const ssmeBoost = this.srbDetached ? PhysicsConstants.MAIN_ENGINE_THRUST_BOOST_AFTER_SRB : 1.0;
+                const etBoost = this.etDetached ? PhysicsConstants.MAIN_ENGINE_THRUST_BOOST_AFTER_ET : 1.0;
+                currentThrustMagnitude += ssmeBase * ssmeBoost * etBoost * 0.5; // Reduced thrust for orbital insertion
+            }
+            // OMS thrust for orbital insertion (always available)
+            {
+                const omsBase = PhysicsConstants.THRUST_OMS;
+                const omsBoost = this.etDetached ? PhysicsConstants.OMS_THRUST_BOOST_AFTER_ET : 1.0;
+                currentThrustMagnitude += omsBase * omsBoost;
+            }
+            break;
+        case ShuttleStages.ORBITAL_STABILIZATION:
+        case ShuttleStages.FREE_SPACE_MOTION:
+            // No thrust during stabilization and free space motion
+            currentThrustMagnitude = 0;
+            break;
+        case ShuttleStages.ORBITAL_MANEUVERING:
+            // Full main engine thrust with all boosts for orbital maneuvers
+            // Provide thrust even after fuel tank detaches (using OMS as backup)
+            if (this.fuelPercentage > 0) {
+                const ssmeBase = PhysicsConstants.THRUST_MAIN_ENGINES;
+                const ssmeBoost = this.srbDetached ? PhysicsConstants.MAIN_ENGINE_THRUST_BOOST_AFTER_SRB : 1.0;
+                const etBoost = this.etDetached ? PhysicsConstants.MAIN_ENGINE_THRUST_BOOST_AFTER_ET : 1.0;
+                currentThrustMagnitude += ssmeBase * ssmeBoost * etBoost;
+            } else if (this.etDetached) {
+                // Use OMS thrust if main engines are out of fuel
+                const omsBase = PhysicsConstants.THRUST_OMS;
+                const omsBoost = PhysicsConstants.OMS_THRUST_BOOST_AFTER_ET;
+                currentThrustMagnitude += omsBase * omsBoost;
+            }
+            break;
+        default:
+            currentThrustMagnitude = 0;
+    }
+
+    return currentThrustMagnitude;
+}
+
+    // Returns the current thrust vector in world coordinates for HUD/diagnostics
     calculateThrust() {
-        const thrust = new THREE.Vector3();
-        let currentThrustMagnitude = 0;
-
-        switch (this.stage) {
-            case ShuttleStages.IDLE:
-                currentThrustMagnitude = 0;
-                break;
-            case ShuttleStages.ENGINE_STARTUP:
-                currentThrustMagnitude = PhysicsConstants.THRUST_ENGINE_STARTUP;
-                break;
-            case ShuttleStages.LIFTOFF:
-                if (this.fuelPercentage > 0) {
-                    currentThrustMagnitude += PhysicsConstants.THRUST_MAIN_ENGINES;
-                }
-                if (this.isRocket1Attached) {
-                    currentThrustMagnitude += (PhysicsConstants.THRUST_SOLID_ROCKETS / 2);
-                }
-                if (this.isRocket2Attached) {
-                    currentThrustMagnitude += (PhysicsConstants.THRUST_SOLID_ROCKETS / 2);
-                }
-                break;
-            case ShuttleStages.ATMOSPHERIC_ASCENT:
-                if (this.fuelPercentage > 0) {
-                    currentThrustMagnitude += PhysicsConstants.THRUST_MAIN_ENGINES;
-                }
-                break;
-            case ShuttleStages.ORBITAL_INSERTION:
-                if (this.fuelPercentage > 0) {
-                    currentThrustMagnitude += PhysicsConstants.THRUST_MAIN_ENGINES * 0.5;
-                }
-                break;
-            case ShuttleStages.ORBITAL_MANEUVERING:
-                currentThrustMagnitude += PhysicsConstants.THRUST_MAIN_ENGINES * 0.001;
-                break;
-            default:
-                currentThrustMagnitude = 0;
+        const magnitude = this.calculateThrustMagnitude();
+        if (magnitude <= 0) {
+            return new THREE.Vector3(0, 0, 0);
         }
+        return this.forwardVector.clone().multiplyScalar(magnitude);
+    }
 
-        if (isNaN(currentThrustMagnitude) || !isFinite(currentThrustMagnitude)) {
-            console.warn("Thrust magnitude became NaN/Infinity. Returning zero thrust.");
-            return new THREE.Vector3();
+    updateTilt(deltaTime) {
+        if(this.stage !== ShuttleStages.IDLE && this.stage !== ShuttleStages.ENGINE_STARTUP) {
+            // Altitude-driven gravity turn: ramp pitch from 0° at 1 km to ~MAX_TURN_ANGLE by 300 km
+            const altitude = this.position.y - PhysicsConstants.EARTH_RADIUS;
+            if (altitude >= PhysicsConstants.GRAVITY_TURN_START_ALTITUDE) {
+                const startAlt = PhysicsConstants.GRAVITY_TURN_START_ALTITUDE;
+                const endAlt = PhysicsConstants.GRAVITY_TURN_END_ALTITUDE;
+                const t = THREE.MathUtils.clamp((altitude - startAlt) / Math.max(1, (endAlt - startAlt)), 0, 1);
+                this.tiltAngle = PhysicsConstants.INITIAL_TURN_ANGLE + t * (PhysicsConstants.MAX_TURN_ANGLE - PhysicsConstants.INITIAL_TURN_ANGLE);
+            }
+
+            // Clamp tilt between 0 and MAX_TURN_ANGLE for safety
+            this.tiltAngle = THREE.MathUtils.clamp(this.tiltAngle, 0, PhysicsConstants.MAX_TURN_ANGLE);
+
+            const quaternion = new THREE.Quaternion();
+            quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), THREE.MathUtils.degToRad(this.tiltAngle));
+
+            this.forwardVector = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion);
         }
-
-        thrust.y = currentThrustMagnitude;
-        return thrust;
     }
 
     update(deltaTime) {
@@ -190,6 +286,7 @@ export class ShuttlePhysics {
 
         let altitudeAtStartOfStep = this.position.y - PhysicsConstants.EARTH_RADIUS;
 
+        // Apply gravity force in all stages (including orbital insertion)
         this.force.add(this.calculateGravityForce(this.position));
 
         if (this.stage === ShuttleStages.IDLE) {
@@ -211,8 +308,20 @@ export class ShuttlePhysics {
             }
         }
 
-        const currentThrustVector = this.calculateThrust();
-        this.force.add(currentThrustVector);
+        const currentThrustMagnitude = this.calculateThrustMagnitude(); 
+
+        // During ORBITAL_INSERTION, only allow OMS thrust to add up to target velocity, then stop
+        let allowThrust = true;
+        if (this.stage === ShuttleStages.ORBITAL_INSERTION) {
+            const targetVelocityLEO = PhysicsConstants.ORBITAL_VELOCITY_LEO;
+            if (this.velocity.length() >= targetVelocityLEO) {
+                allowThrust = false;
+            }
+        }
+        if(currentThrustMagnitude > 0 && allowThrust) {
+            const thrustVector = this.forwardVector.clone().multiplyScalar(currentThrustMagnitude);
+            this.force.add(thrustVector);
+        }
 
         const currentTotalMass = this.calculateTotalMass();
         if (currentTotalMass > 0 && !isNaN(currentTotalMass) && isFinite(currentTotalMass)) {
@@ -266,14 +375,15 @@ export class ShuttlePhysics {
 
         const mainEngineFuelBurnRate = PhysicsConstants.FUEL_CONSUMPTION_RATE;
 
-        if (this.fuelPercentage > 0 && currentThrustVector.lengthSq() > 0.1) {
+        if (this.fuelPercentage > 0 && currentThrustMagnitude > 0) {
             let actualBurnRate = 0;
             if (this.stage === ShuttleStages.LIFTOFF ||
+                this.stage === ShuttleStages.GRAVITY_TURN ||
                 this.stage === ShuttleStages.ATMOSPHERIC_ASCENT ||
                 this.stage === ShuttleStages.ORBITAL_INSERTION ||
                 this.stage === ShuttleStages.ORBITAL_MANEUVERING) {
 
-                if (currentThrustVector.y > 0) {
+                if (this.forwardVector.y > 0) {
                     actualBurnRate = mainEngineFuelBurnRate;
                 }
 
@@ -281,17 +391,26 @@ export class ShuttlePhysics {
                 actualBurnRate = Math.min(actualBurnRate, fuelMassInTank / deltaTime);
 
                 const fuelPercentageConsumed = (actualBurnRate * deltaTime / this.externalTankInitialTotalMass) * 100;
-                this.fuelPercentage = Math.max(0, this.fuelPercentage - fuelPercentageConsumed);
+                let newFuelPercent = Math.max(0, this.fuelPercentage - fuelPercentageConsumed);
+                this.fuelPercentage = newFuelPercent;
 
                 if (isNaN(this.fuelPercentage) || !isFinite(this.fuelPercentage)) {
                     console.error("Fuel percentage became NaN/Infinity. Clamping to 0.");
                     this.fuelPercentage = 0;
+                }
+                // If fuel is zero, detach ET immediately
+                if (this.fuelPercentage <= 0 && this.isFuelTankAttached && !this.etDetached) {
+                    this.fuelPercentage = 0;
+                    this.detachComponent('fuelTank');
+                    this.etDetached = true;
+                    console.log(`External Fuel Tank detached due to fuel depletion at ${this.time.toFixed(2)}s, Altitude: ${altitudeAtStartOfStep.toFixed(0)}m`);
                 }
             }
         }
 
         this.time += deltaTime;
 
+        this.updateTilt(deltaTime);
 
         if (this.stage === ShuttleStages.ENGINE_STARTUP) {
             this.engineStartupTimer += deltaTime;
@@ -337,18 +456,24 @@ export class ShuttlePhysics {
                 }
                 break;
             case ShuttleStages.LIFTOFF:
-                if (currentAltitude > PhysicsConstants.SRB_DETACH_ALTITUDE && this.srbDetached) {
-                    this.stage = ShuttleStages.ATMOSPHERIC_ASCENT;
+                if (currentAltitude >= PhysicsConstants.GRAVITY_TURN_START_ALTITUDE) {
+                    this.stage = ShuttleStages.GRAVITY_TURN;
                     console.log(`Shuttle Stage: ${getStageLabel(this.stage)} at ${this.time.toFixed(2)}s, Alt: ${currentAltitude.toFixed(0)}m`);
+                }
+                break;
+            case ShuttleStages.GRAVITY_TURN:
+                // Advance to atmospheric ascent after exiting most of atmosphere
+                if (currentAltitude >= PhysicsConstants.ATMOSPHERE_HEIGHT * 0.5) {
+                    this.stage = ShuttleStages.ATMOSPHERIC_ASCENT;
+                    console.log(`Shuttle Stage: ${getStageLabel(this.stage)} at ${currentAltitude.toFixed(0)}m`);
                 }
                 break;
             case ShuttleStages.ATMOSPHERIC_ASCENT:
-                if (currentAltitude > PhysicsConstants.ATMOSPHERE_HEIGHT && this.etDetached) {
-                    this.stage = ShuttleStages.ORBITAL_INSERTION;
-                    console.log(`Shuttle Stage: ${getStageLabel(this.stage)} at ${this.time.toFixed(2)}s, Alt: ${currentAltitude.toFixed(0)}m`);
-                }
+                // Keep current tilt during atmospheric ascent
+                // Stage transition to ORBITAL_INSERTION happens when fuel tank detaches at 113 km
                 break;
             case ShuttleStages.ORBITAL_INSERTION:
+                // Stop main engines at insertion (handled by thrust logic); move to stabilization
                 const targetAltitudeLEO = PhysicsConstants.LOW_EARTH_ORBIT_ALTITUDE;
                 const targetVelocityLEO = PhysicsConstants.ORBITAL_VELOCITY_LEO;
 
@@ -366,13 +491,13 @@ export class ShuttlePhysics {
                 }
                 break;
             case ShuttleStages.FREE_SPACE_MOTION:
-                if (this.calculateThrust().lengthSq() > 0.1) {
+                if (this.calculateThrustMagnitude() > 0) {
                     this.stage = ShuttleStages.ORBITAL_MANEUVERING;
                     console.log(`Shuttle Stage: ${getStageLabel(this.stage)} at ${this.time.toFixed(2)}s`);
                 }
                 break;
             case ShuttleStages.ORBITAL_MANEUVERING:
-                if (this.calculateThrust().lengthSq() < 0.1) {
+                if (this.calculateThrustMagnitude() === 0) {
                     this.stage = ShuttleStages.FREE_SPACE_MOTION;
                     console.log(`Shuttle Stage: ${getStageLabel(this.stage)} at ${this.time.toFixed(2)}s`);
                 }
@@ -381,8 +506,8 @@ export class ShuttlePhysics {
     }
 
     handleComponentDetachment(altitude, currentTime, currentVelocity) {
+        // SRB detachment: ONLY check altitude (50 km)
         if (!this.srbDetached && this.isRocket1Attached &&
-            currentTime >= PhysicsConstants.SRB_DETACH_TIME &&
             altitude >= PhysicsConstants.SRB_DETACH_ALTITUDE) {
 
             this.detachComponent('rocket1');
@@ -392,15 +517,17 @@ export class ShuttlePhysics {
         }
 
         if (!this.etDetached && this.isFuelTankAttached &&
-            currentTime >= PhysicsConstants.FUEL_TANK_DETACH_TIME &&
-            altitude >= PhysicsConstants.FUEL_TANK_DETACH_ALTITUDE &&
-            currentVelocity >= PhysicsConstants.ORBITAL_VELOCITY_LEO * 0.95 &&
-            this.fuelPercentage <= PhysicsConstants.FUEL_TANK_DETACH_FUEL_PERCENT) {
+            altitude >= PhysicsConstants.FUEL_TANK_DETACH_ALTITUDE) {
 
             this.detachComponent('fuelTank');
-            this.fuelPercentage = 0;
+            this.fuelPercentage = 0; // ET fuel depleted by detachment altitude
             this.etDetached = true;
+            
+            // Immediately transition to ORBITAL_INSERTION stage when fuel tank detaches
+            this.stage = ShuttleStages.ORBITAL_INSERTION;
+            
             console.log(`External Fuel Tank detached at ${currentTime.toFixed(2)}s, Altitude: ${altitude.toFixed(0)}m`);
+            console.log(`Stage transition to ORBITAL_INSERTION at ${currentTime.toFixed(2)}s`);
         }
     }
 
@@ -409,8 +536,10 @@ export class ShuttlePhysics {
         if (stage === ShuttleStages.ENGINE_STARTUP) {
             this.engineStartupTimer = 0;
             this.towerTilted = false; // إعادة تعيين علامة الميلان عند بدء مرحلة جديدة
+            this.tiltLocked = false;
         } else if (stage === ShuttleStages.IDLE) {
             this.towerTilted = false; // إعادة تعيين العلامة عند العودة إلى السكون
+            this.tiltLocked = false;
         }
         console.log(`Shuttle Stage manually set to: ${getStageLabel(stage)}`);
     }

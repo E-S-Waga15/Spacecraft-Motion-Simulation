@@ -3,6 +3,7 @@ export const ShuttleStages = {
     IDLE: 'IDLE',                    // حالة السكون
     ENGINE_STARTUP: 'ENGINE_STARTUP', // مرحلة تشغيل المحركات (جديد)
     LIFTOFF: 'LIFTOFF',             // مرحلة الإقلاع
+    GRAVITY_TURN: 'GRAVITY_TURN',
     ATMOSPHERIC_ASCENT: 'ATMOSPHERIC_ASCENT', // مرحلة عبور الغلاف الجوي
     ORBITAL_INSERTION: 'ORBITAL_INSERTION', // مرحلة الدخول في المدار
     ORBITAL_STABILIZATION: 'ORBITAL_STABILIZATION', // مرحلة التوقف في الفضاء
@@ -15,6 +16,7 @@ export function getStageLabel(stage) {
         case ShuttleStages.IDLE: return 'Idle';
         case ShuttleStages.ENGINE_STARTUP: return 'Engine Startup'; // إضافة التسمية
         case ShuttleStages.LIFTOFF: return 'Liftoff';
+        case ShuttleStages.GRAVITY_TURN: return 'GRAVITY_TURN';
         case ShuttleStages.ATMOSPHERIC_ASCENT: return 'Atmospheric Ascent';
         case ShuttleStages.ORBITAL_INSERTION: return 'Orbital Insertion';
         case ShuttleStages.ORBITAL_STABILIZATION: return 'Orbital Stabilization';

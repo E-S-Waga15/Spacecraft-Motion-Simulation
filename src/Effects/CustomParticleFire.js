@@ -225,7 +225,7 @@ export class CustomParticleSystem {
 
             p.rotation += timeElapsed * 0.5;
             p.alpha = this._alphaSpline.Get(t);
-            p.currentSize = 1;
+            p.currentSize = 0.8;
             p.colour.copy(this._colourSpline.Get(t));
 
             p.position.add(p.velocity.clone().multiplyScalar(timeElapsed));

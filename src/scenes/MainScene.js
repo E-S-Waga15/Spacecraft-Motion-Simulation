@@ -105,6 +105,11 @@ export class MainScene {
       this.shuttleTrackingCamera = new ShuttleTrackingCamera(
         this.spaceShuttle.model
       );
+      
+      // Debug: Verify the model reference is correct
+      console.log('MainScene: ShuttleTrackingCamera initialized with model:', this.spaceShuttle.model);
+      console.log('MainScene: Model position:', this.spaceShuttle.model.position);
+      console.log('MainScene: Model rotation:', this.spaceShuttle.model.rotation);
 
       this.activeCamera = this.freeLookCamera.getCamera();
       this.freeLookCamera.setEnabled(true);
@@ -135,6 +140,12 @@ export class MainScene {
       console.log(
         "Switched to Shuttle Tracking Camera (Press '1' for Free-Look Camera)"
       );
+      
+      // Debug: Log camera and model state when switching to tracking camera
+      if (this.spaceShuttle && this.spaceShuttle.model) {
+        console.log('MainScene: Shuttle model position:', this.spaceShuttle.model.position);
+        console.log('MainScene: Shuttle model world position:', this.spaceShuttle.model.getWorldPosition(new THREE.Vector3()));
+      }
     } else {
       this.activeCamera = this.freeLookCamera.getCamera();
       this.freeLookCamera.setEnabled(true);
@@ -225,6 +236,3 @@ export class MainScene {
     }
   }
 }
-
-const sceneManager = new MainScene();
-window.scene = sceneManager;

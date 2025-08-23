@@ -699,9 +699,9 @@ export class SpaceShuttle {
 
                 if (
                     this.physics.stage === ShuttleStages.ENGINE_STARTUP ||
-                    this.physics.stage === ShuttleStages.LIFTOFF ||
-                    this.physics.stage === ShuttleStages.ATMOSPHERIC_ASCENT
+                    this.physics.stage === ShuttleStages.LIFTOFF
                 ) {
+                    // Pin X/Z only during pad and immediate liftoff; allow horizontal motion afterwards
                     this.model.position.x = this.initialModelPosition.x;
                     this.model.position.y = physicsPositionInProjectUnits.y;
                     this.model.position.z = this.initialModelPosition.z;
@@ -710,7 +710,11 @@ export class SpaceShuttle {
                 }
 
                 this.model.rotation.copy(this.initialModelRotation);
-
+                // Apply pitch tilt around model's local X axis based on physics tiltAngle (inverted)
+                if (this.physics && typeof this.physics.tiltAngle === 'number') {
+                    const pitchRadians = THREE.MathUtils.degToRad(this.physics.tiltAngle);
+                    this.model.rotateX(pitchRadians);
+                }
 
                 this.mainEngineParticleSystems.forEach(ps => ps.update(deltaTime));
                 this.srbParticleSystems.forEach(ps => ps.update(deltaTime));
@@ -721,6 +725,12 @@ export class SpaceShuttle {
                 this.updateFuelTankDetachmentAnimation(deltaTime);
                 this.updateFuelTankSmokeParticles(deltaTime);
 
+                // Ensure ET detachment visuals start immediately when physics flags detachment
+                if (this.physics.etDetached && this.fuelTank && this.fuelTank.parent && !this.fuelTankDetachmentAnimation.isDetaching) {
+                    this.startFuelTankDetachmentAnimation();
+                    console.log("Visual: Starting fuel tank detachment animation (physics flag).");
+                }
+
                 switch (this.physics.stage) {
                     case ShuttleStages.ENGINE_STARTUP:
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
@@ -729,7 +739,7 @@ export class SpaceShuttle {
                         this.playSounds(true);
                         break;
                     case ShuttleStages.LIFTOFF:
-                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(this.physics.fuelPercentage > 0));
                         this.srbParticleSystems.forEach(ps => ps.setVisibility(true));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
                         this.playSounds(false);
@@ -744,19 +754,15 @@ export class SpaceShuttle {
                             this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
                             console.log("Visual: Starting SRB detachment animation.");
                         }
-                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(this.physics.fuelPercentage > 0));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
                         break;
                     case ShuttleStages.ORBITAL_INSERTION:
-                        if (this.physics.etDetached && this.fuelTank.parent &&
-                            !this.fuelTankDetachmentAnimation.isDetaching) {
-                            this.startFuelTankDetachmentAnimation();
-                            console.log("Visual: Starting fuel tank detachment animation.");
-                        }
-                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(false));
+                        // Keep engine fire visible during orbital insertion even after fuel tank detaches
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
                         this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
-                        this.playSoundsLunch(false);
+                        this.playSoundsLunch(true);
                         break;
                     case ShuttleStages.ORBITAL_STABILIZATION:
                     case ShuttleStages.FREE_SPACE_MOTION:
@@ -766,6 +772,7 @@ export class SpaceShuttle {
                         this.playSoundsLunch(false);
                         break;
                     case ShuttleStages.ORBITAL_MANEUVERING:
+                        // Show engine fire during orbital maneuvering even after fuel tank detaches
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
                         this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));

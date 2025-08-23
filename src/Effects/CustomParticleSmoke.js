@@ -223,7 +223,7 @@ export class CustomParticleSmoke {
 
             p.rotation += timeElapsed * 0.5;
             p.alpha = this._alphaSpline.Get(t);
-            p.currentSize = 3.5;
+            p.currentSize = 2.5;
 
             p.colour.copy(this._colourSpline.Get(t));
 
