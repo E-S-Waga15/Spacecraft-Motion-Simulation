@@ -32,6 +32,9 @@ export class SpaceShuttle {
         this.srbParticleSystems = [];
         this.smokeParticleSystem = [];
 
+        // علامة جديدة لتتبع حالة الفصل المرئي
+        this.srbSeparated = false;
+
         this.rocketDetachmentAnimation = {
             rocket1: {
                 isDetaching: false,
@@ -725,6 +728,16 @@ export class SpaceShuttle {
                 this.updateFuelTankDetachmentAnimation(deltaTime);
                 this.updateFuelTankSmokeParticles(deltaTime);
 
+                // Start SRB detachment animation immediately when physics flag is set
+                if (this.physics.srbDetached && !this.srbSeparated) {
+                    this.startRocketDetachmentAnimation('rocket1');
+                    this.startRocketDetachmentAnimation('rocket2');
+                    this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
+                    this.srbSeparated = true; // Set flag to prevent re-triggering
+                    console.log("Visual: Starting SRB detachment animation (physics flag).");
+                }
+
+
                 // Ensure ET detachment visuals start immediately when physics flags detachment
                 if (this.physics.etDetached && this.fuelTank && this.fuelTank.parent && !this.fuelTankDetachmentAnimation.isDetaching) {
                     this.startFuelTankDetachmentAnimation();
@@ -740,20 +753,14 @@ export class SpaceShuttle {
                         break;
                     case ShuttleStages.LIFTOFF:
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(this.physics.fuelPercentage > 0));
+                        // The SRB effects will be turned off when the detachment happens, so we keep this here.
                         this.srbParticleSystems.forEach(ps => ps.setVisibility(true));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
                         this.playSounds(false);
                         this.playSoundsLunch(true);
                         break;
                     case ShuttleStages.ATMOSPHERIC_ASCENT:
-                        if (this.physics.srbDetached && this.rocket1.parent &&
-                            !this.rocketDetachmentAnimation.rocket1.isDetaching) {
-
-                            this.startRocketDetachmentAnimation('rocket1');
-                            this.startRocketDetachmentAnimation('rocket2');
-                            this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
-                            console.log("Visual: Starting SRB detachment animation.");
-                        }
+                        // Removed the old, buggy detachment logic from here
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(this.physics.fuelPercentage > 0));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
                         break;
@@ -787,6 +794,8 @@ export class SpaceShuttle {
 
             for (let i = this.detachedParts.length - 1; i >= 0; i--) {
                 const part = this.detachedParts[i];
+
+                // Apply gravity to vertical velocity (slowed down for visual e
 
                 // Apply gravity to vertical velocity (slowed down for visual effect)
                 part.velocity.y += (gravityProjectUnits * 0.1) * deltaTime; // Gravity reduced to 10% for slower fall

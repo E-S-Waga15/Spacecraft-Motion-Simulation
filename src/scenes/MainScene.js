@@ -5,7 +5,7 @@ import { Earth } from "../objects/Earth";
 import { FreeLookCamera } from "../camera/FreeLookCamera";
 import { ShuttleTrackingCamera } from "../camera/ShuttleTrackingCamera";
 import { LaunchPad } from "../objects/LaunchPad";
-import { SpaceShuttle } from "../objects/SpaceShuttle"; // Make sure this path is correct
+import { SpaceShuttle } from "../objects/SpaceShuttle";
 import { WaterObject } from "../objects/Water";
 import { Units } from "../utils/Units";
 import { ShuttlePhysics } from "../physics/ShuttlePhysics";
@@ -26,8 +26,12 @@ export class MainScene {
     this.freeLookCamera = null;
     this.shuttleTrackingCamera = null;
     this.activeCamera = null;
+    this.lastFrameTime = performance.now();
 
     this.spacebarPressed = false;
+
+    // ✅ إضافة خاصية للتحكم في سرعة المحاكاة
+    this.simulationSpeedFactor = 1.0;
 
     this.init();
   }
@@ -38,6 +42,9 @@ export class MainScene {
       this.renderer.setPixelRatio(window.devicePixelRatio);
       this.renderer.shadowMap.enabled = true;
       this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this.renderer.toneMappingExposure = 1.25;
 
       const audioListener = new THREE.AudioListener();
       this.scene.add(audioListener);
@@ -81,15 +88,12 @@ export class MainScene {
         this.shuttlePhysics.setLaunchPad(this.launchPad);
       }
 
-      // 🚀 الخطوة الرئيسية: تهيئة الكاميرات أولاً قبل SpaceShuttle
       this.freeLookCamera = new FreeLookCamera(this.earth);
-
-      // ✅ تمرير الكاميرا النشطة حالياً (FreeLookCamera) و الـ scene إلى SpaceShuttle constructor
       this.spaceShuttle = new SpaceShuttle(
         this.earth,
         this.shuttlePhysics,
         this.freeLookCamera.getCamera(),
-        this.scene // <--- ADDED THIS LINE: Pass the scene object here
+        this.scene
       );
       this.spaceShuttle.setAudioListener(audioListener);
       const shuttleModel = await this.spaceShuttle.load();
@@ -97,19 +101,21 @@ export class MainScene {
         this.scene.add(shuttleModel);
       }
 
-      const axesHelper = new THREE.AxesHelper(Units.toProjectUnits(20));
-      this.scene.add(axesHelper);
-
-      // الآن بعد تحميل shuttleModel وتهيئته، يمكننا إنشاء ShuttleTrackingCamera
-      // لأنها تحتاج إلى this.spaceShuttle.model
       this.shuttleTrackingCamera = new ShuttleTrackingCamera(
         this.spaceShuttle.model
       );
-      
-      // Debug: Verify the model reference is correct
-      console.log('MainScene: ShuttleTrackingCamera initialized with model:', this.spaceShuttle.model);
-      console.log('MainScene: Model position:', this.spaceShuttle.model.position);
-      console.log('MainScene: Model rotation:', this.spaceShuttle.model.rotation);
+      console.log(
+        "MainScene: ShuttleTrackingCamera initialized with model:",
+        this.spaceShuttle.model
+      );
+      console.log(
+        "MainScene: Model position:",
+        this.spaceShuttle.model.position
+      );
+      console.log(
+        "MainScene: Model rotation:",
+        this.spaceShuttle.model.rotation
+      );
 
       this.activeCamera = this.freeLookCamera.getCamera();
       this.freeLookCamera.setEnabled(true);
@@ -140,11 +146,15 @@ export class MainScene {
       console.log(
         "Switched to Shuttle Tracking Camera (Press '1' for Free-Look Camera)"
       );
-      
-      // Debug: Log camera and model state when switching to tracking camera
       if (this.spaceShuttle && this.spaceShuttle.model) {
-        console.log('MainScene: Shuttle model position:', this.spaceShuttle.model.position);
-        console.log('MainScene: Shuttle model world position:', this.spaceShuttle.model.getWorldPosition(new THREE.Vector3()));
+        console.log(
+          "MainScene: Shuttle model position:",
+          this.spaceShuttle.model.position
+        );
+        console.log(
+          "MainScene: Shuttle model world position:",
+          this.spaceShuttle.model.getWorldPosition(new THREE.Vector3())
+        );
       }
     } else {
       this.activeCamera = this.freeLookCamera.getCamera();
@@ -154,15 +164,12 @@ export class MainScene {
         "Switched to Free-Look Camera (Press '2' for Tracking Camera)"
       );
     }
-    // ✅ تحديث الكاميرا في SpaceShuttle عند تبديل الكاميرات
-    // هذا يضمن أن نظام الجسيمات يستخدم الكاميرا الصحيحة للفرز
     if (this.spaceShuttle && this.spaceShuttle.camera !== this.activeCamera) {
       this.spaceShuttle.camera = this.activeCamera;
     }
   }
 
   handleKeyDown(event) {
-    // تحديث الكاميرا النشطة عند تغييرها
     if (event.code === "Digit1") {
       if (this.activeCamera !== this.freeLookCamera.getCamera()) {
         this.toggleCamera();
@@ -183,9 +190,29 @@ export class MainScene {
 
       this.shuttlePhysics.setStage(ShuttleStages.ENGINE_STARTUP);
       if (this.spaceShuttle) {
-        this.spaceShuttle.toggleEngineEffects(true); // هذا مجرد سجل
-        this.spaceShuttle.playSounds(true); // بدء صوت المحركات
+        this.spaceShuttle.toggleEngineEffects(true);
+        this.spaceShuttle.playSounds(true);
       }
+    }
+
+    // ✅ إضافة معالج أحداث لوحة المفاتيح للتحكم في السرعة
+    // استخدام مفتاح "+" لزيادة السرعة ومفتاح "-" لإنقاصها
+    if (event.key === "0" || event.key === "Equal") {
+      this.simulationSpeedFactor = Math.min(
+        10.0,
+        this.simulationSpeedFactor + 1.0
+      );
+      console.log(
+        `Simulation speed increased to: ${this.simulationSpeedFactor}x`
+      );
+    } else if (event.key === "-" || event.key === "Minus") {
+      this.simulationSpeedFactor = Math.max(
+        1.0,
+        this.simulationSpeedFactor - 1.0
+      );
+      console.log(
+        `Simulation speed decreased to: ${this.simulationSpeedFactor}x`
+      );
     }
   }
 
@@ -201,7 +228,12 @@ export class MainScene {
     requestAnimationFrame(this.animate.bind(this));
 
     try {
-      const deltaTime = 1 / 60; // Fixed timestep for physics and updates
+      // ✅ حساب الوقت الفعلي المنقضي بين كل إطار (بالثواني)
+      const visualDeltaTime = (performance.now() - this.lastFrameTime) / 1000;
+      this.lastFrameTime = performance.now();
+
+      // ✅ حساب زمن المحاكاة المنقضي بناءً على عامل السرعة
+      const simulationDeltaTime = visualDeltaTime * this.simulationSpeedFactor;
 
       if (this.earth) {
         this.earth.update();
@@ -212,15 +244,18 @@ export class MainScene {
       }
 
       if (this.launchPad && this.earth && this.earth.getObject()) {
-        this.launchPad.update(this.earth.getObject().rotation.y, deltaTime);
+        this.launchPad.update(
+          this.earth.getObject().rotation.y,
+          visualDeltaTime
+        );
       }
 
       if (this.spaceShuttle) {
-        this.spaceShuttle.update(deltaTime);
-
-        this.spaceShuttle.renderFuelTankSmokeParticles(this.scene);
-
-        this.spaceShuttle.renderSmokeParticles(this.scene);
+        // ✅ تمرير زمن المحاكاة المنقضي بدلاً من زمن العرض
+        this.spaceShuttle.update(
+          simulationDeltaTime,
+          this.simulationSpeedFactor
+        ); // ✅ يجب أن يتم استدعاء دوال render داخل دالة update الخاصة بالمكوك // this.spaceShuttle.renderFuelTankSmokeParticles(this.scene); // this.spaceShuttle.renderSmokeParticles(this.scene);
       }
 
       if (this.freeLookCamera) {

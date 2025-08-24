@@ -123,10 +123,14 @@ export class CustomParticleSystem {
             return c.lerp(b, t);
         });
         // ✅ الألوان يمكن تعديلها لتناسب لهب المحركات
+        this._colourSpline.AddPoint(0.4, new THREE.Color(0xe6a9e6)); // أزرق داكن
+        this._colourSpline.AddPoint(0.2, new THREE.Color(0x3c63d2)); // أزرق متوسط
         this._colourSpline.AddPoint(0.0, new THREE.Color(0xFFF990)); // أصفر فاتح جداً
         this._colourSpline.AddPoint(0.2, new THREE.Color(0xFF8C00)); // برتقالي داكن
-        this._colourSpline.AddPoint(0.4, new THREE.Color(0xFF4500)); // برتقالي محمر
+        this._colourSpline.AddPoint(1.0, new THREE.Color(0xFF4500)); 
         this._colourSpline.AddPoint(1.0, new THREE.Color(0x330000)); // أحمر داكن / أسود (نهاية الدخان)
+
+
 
 
         this._sizeSpline = new LinearSpline((t, a, b) => {
@@ -149,8 +153,8 @@ export class CustomParticleSystem {
      */
     _AddParticles(timeElapsed) {
         this.gdfsghk += timeElapsed;
-        const n = Math.floor(this.gdfsghk * 100.0); 
-        this.gdfsghk -= n / 100.0;
+        const n = Math.floor(this.gdfsghk * 1); 
+        this.gdfsghk -= n / 600;
 
         for (let i = 0; i < n; i++) {
             const life = (Math.random() * 0.75 + 0.25) * 0.55; 

@@ -47,12 +47,12 @@ export const PhysicsConstants = {
     ORBITAL_VELOCITY_TOLERANCE: 50, // m/s (tolerance for orbital insertion velocity)
 
     // Detachment Altitudes and Times
-    SRB_DETACH_ALTITUDE: 50000, // meters (SRBs detach at 50 km)
+    SRB_DETACH_ALTITUDE: 45000, // meters (SRBs detach at 45 km)
     FUEL_TANK_DETACH_ALTITUDE: 113000, // meters (Fuel tank detaches at 113 km)
     FUEL_TANK_DETACH_FUEL_PERCENT: 5, // % fuel remaining at detachment
 
     // مرحلة بدء تشغيل المحرك
-    ENGINE_STARTUP_DURATION: 3, // seconds (مدة مرحلة بدء المحرك قبل الإقلاع الفعلي)
+    ENGINE_STARTUP_DURATION: 5, // seconds (مدة مرحلة بدء المحرك قبل الإقلاع الفعلي)
 
     GRAVITY_TURN_START_ALTITUDE: 1000,
     GRAVITY_TURN_END_ALTITUDE: 300000, // Extend gravity turn until 300 km

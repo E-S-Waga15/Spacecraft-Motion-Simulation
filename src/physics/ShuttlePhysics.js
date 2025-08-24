@@ -273,11 +273,7 @@ export class ShuttlePhysics {
     }
 
     update(deltaTime) {
-        const maxDeltaTime = 0.0166;
-        if (deltaTime > maxDeltaTime) {
-            deltaTime = maxDeltaTime;
-            console.warn(`deltaTime capped to ${maxDeltaTime.toFixed(3)}s for stability.`);
-        }
+    
         if (deltaTime <= 0) {
             return;
         }
@@ -505,8 +501,8 @@ export class ShuttlePhysics {
         }
     }
 
-    handleComponentDetachment(altitude, currentTime, currentVelocity) {
-        // SRB detachment: ONLY check altitude (50 km)
+    handleComponentDetachment(altitude, currentTime) {
+        // SRB detachment: ONLY check altitude (45 km)
         if (!this.srbDetached && this.isRocket1Attached &&
             altitude >= PhysicsConstants.SRB_DETACH_ALTITUDE) {
 
