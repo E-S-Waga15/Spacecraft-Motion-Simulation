@@ -443,6 +443,14 @@ export class MainScene {
       }
 
       this.renderer.render(this.scene, this.activeCamera);
+      
+      // إظهار معلومات المناورات في وحدة التحكم
+      if (this.spaceShuttle && this.spaceShuttle.physics) {
+        const physics = this.spaceShuttle.physics;
+        if (physics.stage === ShuttleStages.ORBITAL_MANEUVERING || physics.stage === ShuttleStages.ORBITAL_INSERTION || physics.stage === ShuttleStages.FREE_SPACE_MOTION) {
+          console.log(`Maneuvering Thrust: ${(physics.maneuveringThrust || 0).toFixed(2)}, Lateral Thrust: ${(physics.lateralThrust || 0).toFixed(2)}`);
+        }
+      }
     } catch (error) {
       console.error("Error in animation loop:", error);
     }

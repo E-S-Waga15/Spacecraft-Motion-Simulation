@@ -751,6 +751,11 @@ export class SpaceShuttle {
                     this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
                     this.srbSeparated = true; // Set flag to prevent re-triggering
                     console.log("Visual: Starting SRB detachment animation (physics flag).");
+                    
+                    // تفعيل تأثير الكاميرا عند فصل الصواريخ
+                    if (this.camera && this.camera.triggerDetachmentEffect) {
+                        this.camera.triggerDetachmentEffect();
+                    }
                 }
 
 
@@ -758,6 +763,11 @@ export class SpaceShuttle {
                 if (this.physics.etDetached && this.fuelTank && this.fuelTank.parent && !this.fuelTankDetachmentAnimation.isDetaching) {
                     this.startFuelTankDetachmentAnimation();
                     console.log("Visual: Starting fuel tank detachment animation (physics flag).");
+                    
+                    // تفعيل تأثير الكاميرا عند فصل الفول تانك
+                    if (this.camera && this.camera.triggerDetachmentEffect) {
+                        this.camera.triggerDetachmentEffect();
+                    }
                 }
 
                 switch (this.physics.stage) {
@@ -782,36 +792,56 @@ export class SpaceShuttle {
                         break;
                     case ShuttleStages.ORBITAL_INSERTION:
                         // Keep engine fire visible during orbital insertion even after fuel tank detaches
-                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
+                        // إظهار تأثيرات المحرك عند وجود دفع
+                        const hasInsertionThrust = this.physics.calculateThrustMagnitude() > 0 || 
+                                                Math.abs(this.physics.maneuveringThrust) > 0.1;
+                        
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(hasInsertionThrust));
                         this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
-                        this.playSoundsLunch(true);
+                        this.playSoundsLunch(hasInsertionThrust);
                         break;
                     case ShuttleStages.ORBITAL_STABILIZATION:
-                    case ShuttleStages.FREE_SPACE_MOTION:
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(false));
                         this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
                         this.playSoundsLunch(false);
                         break;
-                    case ShuttleStages.ORBITAL_MANEUVERING:
-                        // Show engine fire during orbital maneuvering even after fuel tank detaches
-                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(true));
+                    case ShuttleStages.FREE_SPACE_MOTION:
+                        // إظهار تأثيرات المحرك عند وجود دفع في الحركة الحرة
+                        const hasFreeSpaceThrust = Math.abs(this.physics.maneuveringThrust) > 0.1 || 
+                                                Math.abs(this.physics.lateralThrust) > 0.1;
+                        
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(hasFreeSpaceThrust));
                         this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
-                        this.playSoundsLunch(true);
+                        this.playSoundsLunch(hasFreeSpaceThrust);
+                        break;
+                    case ShuttleStages.ORBITAL_MANEUVERING:
+                        // Show engine fire during orbital maneuvering even after fuel tank detaches
+                        // إظهار تأثيرات المحرك فقط عند وجود دفع
+                        const hasThrust = this.physics.calculateThrustMagnitude() > 0 || 
+                                        Math.abs(this.physics.maneuveringThrust) > 0.1 || 
+                                        Math.abs(this.physics.lateralThrust) > 0.1;
+                        
+                        this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(hasThrust));
+                        this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
+                        this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
+                        this.playSoundsLunch(hasThrust);
                         break;
                 }
             }
 
+            // التحكم في المناورات المدارية - متاح في جميع مراحل الفضاء
             if (this.physics.stage === ShuttleStages.ORBITAL_STABILIZATION ||
                 this.physics.stage === ShuttleStages.FREE_SPACE_MOTION || 
-                this.physics.stage === ShuttleStages.ORBITAL_MANEUVERING) {
+                this.physics.stage === ShuttleStages.ORBITAL_MANEUVERING ||
+                this.physics.stage === ShuttleStages.ORBITAL_INSERTION) {
 
-                const rotSpeed = 0.5 * deltaTime; // rad/sec
+                const rotSpeed = 1.0 * deltaTime; // زيادة سرعة الدوران
                 const q = new THREE.Quaternion();
 
-                // Pitch (Up/Down arrows)
+                // Pitch (Up/Down arrows) - التحكم في الميلان
                 if (this.keys["ArrowUp"]) {
                     q.setFromAxisAngle(new THREE.Vector3(1,0,0), rotSpeed);
                     this.physics.orientation.multiply(q);
@@ -821,7 +851,7 @@ export class SpaceShuttle {
                     this.physics.orientation.multiply(q);
                 }
 
-                // Yaw (Left/Right arrows)
+                // Yaw (Left/Right arrows) - التحكم في الانحراف
                 if (this.keys["ArrowLeft"]) {
                     q.setFromAxisAngle(new THREE.Vector3(0,1,0), rotSpeed);
                     this.physics.orientation.multiply(q);
@@ -831,7 +861,7 @@ export class SpaceShuttle {
                     this.physics.orientation.multiply(q);
                 }
 
-                // Roll (A / D keys)
+                // Roll (A / D keys) - التحكم في الدوران
                 if (this.keys["KeyA"]) {
                     q.setFromAxisAngle(new THREE.Vector3(0,0,1), rotSpeed);
                     this.physics.orientation.multiply(q);
@@ -841,24 +871,42 @@ export class SpaceShuttle {
                     this.physics.orientation.multiply(q);
                 }
 
-                // Throttle control (Shift / Ctrl)
+                // Throttle control (Shift / Ctrl) - التحكم في قوة الدفع
                 if (this.keys["ShiftLeft"] || this.keys["ShiftRight"]) {
-                    this.physics.throttle = Math.min(1, this.physics.throttle + 0.5 * deltaTime);
+                    this.physics.throttle = Math.min(1, this.physics.throttle + 1.0 * deltaTime);
                 }
                 if (this.keys["ControlLeft"] || this.keys["ControlRight"]) {
-                    this.physics.throttle = Math.max(0, this.physics.throttle - 0.5 * deltaTime);
+                    this.physics.throttle = Math.max(0, this.physics.throttle - 1.0 * deltaTime);
                 }
 
                 this.physics.throttle = Math.max(0, Math.min(1, this.physics.throttle));
                 if (isNaN(this.physics.throttle)) this.physics.throttle = 0;
 
-                // Velocity vector pointing (Q/E)
+                // Velocity vector pointing (Q/E) - توجيه نحو متجه السرعة
                 if (this.keys["KeyQ"] || this.keys["KeyE"]) {
                     const velDir = this.physics.velocity.clone().normalize();
                     const axis = new THREE.Vector3().crossVectors(velDir, new THREE.Vector3(0,1,0)).normalize();
                     const dir = this.keys["KeyQ"] ? +rotSpeed : -rotSpeed;
                     q.setFromAxisAngle(axis, dir);
                     this.physics.orientation.multiply(q);
+                }
+
+                // إضافة تحكم في الدفع (W/S) للمناورات المدارية
+                if (this.keys["KeyW"]) {
+                    // تفعيل الدفع للأمام
+                    this.physics.maneuveringThrust = Math.min(1, (this.physics.maneuveringThrust || 0) + 1.0 * deltaTime);
+                }
+                if (this.keys["KeyS"]) {
+                    // تفعيل الدفع للخلف
+                    this.physics.maneuveringThrust = Math.max(-1, (this.physics.maneuveringThrust || 0) - 1.0 * deltaTime);
+                }
+
+                // إضافة تحكم في الدفع الجانبي (Z/X)
+                if (this.keys["KeyZ"]) {
+                    this.physics.lateralThrust = Math.min(1, (this.physics.lateralThrust || 0) + 1.0 * deltaTime);
+                }
+                if (this.keys["KeyX"]) {
+                    this.physics.lateralThrust = Math.max(-1, (this.physics.lateralThrust || 0) - 1.0 * deltaTime);
                 }
             }
 
