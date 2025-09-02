@@ -7,6 +7,7 @@ import { ShuttleTrackingCamera } from "../camera/ShuttleTrackingCamera";
 import { LaunchPad } from "../objects/LaunchPad";
 import { SpaceShuttle } from "../objects/SpaceShuttle";
 import { WaterObject } from "../objects/Water";
+import { Stars } from "../objects/Stars";
 import { Units } from "../utils/Units";
 import { ShuttlePhysics } from "../physics/ShuttlePhysics";
 import { PhysicsConstants } from "../constants/PhysicsConstants";
@@ -33,6 +34,14 @@ export class MainScene {
     // ✅ إضافة خاصية للتحكم في سرعة المحاكاة
     this.simulationSpeedFactor = 1.0;
 
+    // ✅ التحكم في إظهار/إخفاء خلفية السماء تحت ارتفاع 50,000 عبر المفتاح M
+    this.isSkyBackgroundEnabled = true;
+
+    // ✅ متغيرات للتحكم في خلفية السماء
+    this.skyBackground = null;
+    this.spaceBackground = null;
+    this.currentBackground = 'sky';
+
     this.init();
   }
 
@@ -42,38 +51,96 @@ export class MainScene {
       this.renderer.setPixelRatio(window.devicePixelRatio);
       this.renderer.shadowMap.enabled = true;
       this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      
+      // ✅ إصلاح إعدادات معالجة الألوان
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
       this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      this.renderer.toneMappingExposure = 1.25;
+      this.renderer.toneMappingExposure = 1.0; // إعادة التعرض للقيمة الطبيعية
+      
+      // ✅ إنشاء خلفية السماء
+      this.skyBackground = new THREE.Color(0x87CEEB); // لون السماء الأزرق
+      this.spaceBackground = null; // خلفية الفضاء (شفافة)
+      
+      // ✅ تعيين خلفية السماء كبداية
+      this.scene.background = this.skyBackground;
 
       const audioListener = new THREE.AudioListener();
       this.scene.add(audioListener);
 
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
-      this.scene.add(ambientLight);
+      // ✅ تحميل خريطة بيئية للإضاءة (skybox) لاستخدامها كإضاءة انعكاسية
+      try {
+        const cubeLoader = new THREE.CubeTextureLoader();
+        const envMap = cubeLoader.setPath('/skybox/').load([
+          'posx.jpg', 'negx.jpg', 'posy.jpg', 'negy.jpg', 'posz.jpg', 'negz.jpg'
+        ]);
+        envMap.colorSpace = THREE.SRGBColorSpace;
+        this.environmentMap = envMap;
+        this.scene.environment = envMap; // تفيد خامات PBR مثل MeshStandardMaterial
+      } catch (e) {
+        console.warn('Environment map failed to load, continuing without it', e);
+      }
 
-      const sunLight = new THREE.DirectionalLight(0xffffff, 1);
-      sunLight.position.set(
+      // ✅ تحسين الإضاءة المحيطة
+      this.ambientLight = new THREE.AmbientLight(0xffffff, 0.8); // زيادة شدة الإضاءة المحيطة
+      this.baseAmbientIntensity = 0.8;
+      this.scene.add(this.ambientLight);
+
+      // ✅ تحسين إضاءة الشمس
+      this.sunLight = new THREE.DirectionalLight(0xffffff, 1.5); // زيادة شدة إضاءة الشمس
+      this.baseSunIntensity = 1.5;
+      this.sunLight.position.set(
         Units.toProjectUnits(10000000),
         Units.toProjectUnits(10000000),
         Units.toProjectUnits(10000000)
       );
-      sunLight.castShadow = true;
-      sunLight.shadow.mapSize.width = 2048;
-      sunLight.shadow.mapSize.height = 2048;
-      sunLight.shadow.camera.near = 0.5;
-      sunLight.shadow.camera.far = Units.toProjectUnits(20000000);
-      this.scene.add(sunLight);
+      this.sunLight.castShadow = true;
+      this.sunLight.shadow.mapSize.width = 2048;
+      this.sunLight.shadow.mapSize.height = 2048;
+      this.sunLight.shadow.camera.near = 0.5;
+      this.sunLight.shadow.camera.far = Units.toProjectUnits(20000000);
+      
+      // ✅ تحسين ظلال الشمس
+      this.sunLight.shadow.bias = -0.0001;
+      this.sunLight.shadow.normalBias = 0.02;
+      this.sunLight.shadow.radius = 1;
+      
+      this.scene.add(this.sunLight);
 
-      const hemisphereLight = new THREE.HemisphereLight(
-        0xffffff,
-        0x444444,
-        0.6
+      // ✅ تحسين إضاءة نصف الكرة
+      this.hemisphereLight = new THREE.HemisphereLight(
+        0xffffff, // لون السماء
+        0x444444, // لون الأرض
+        1.0 // زيادة شدة الإضاءة
       );
-      this.scene.add(hemisphereLight);
+      this.baseHemisphereIntensity = 1.0;
+      this.scene.add(this.hemisphereLight);
+
+      // ✅ إضافة إضاءة إضافية للحاملة والطائرات المروحية
+      const carrierLight = new THREE.PointLight(0xffffff, 1.0, Units.toProjectUnits(2000));
+      carrierLight.position.set(0, Units.toProjectUnits(100), 0);
+      this.scene.add(carrierLight);
+
+      // ✅ إضاءة قمرية ناعمة للوضع الليلي (مطفأة افتراضياً)
+      this.moonLight = new THREE.DirectionalLight(0x99bbff, 0.35);
+      this.moonLight.position.set(
+        Units.toProjectUnits(-2000000),
+        Units.toProjectUnits(3000000),
+        Units.toProjectUnits(1500000)
+      );
+      this.moonLight.castShadow = true;
+      this.moonLight.shadow.mapSize.width = 1024;
+      this.moonLight.shadow.mapSize.height = 1024;
+      this.moonLight.shadow.bias = -0.0001;
+      this.moonLight.visible = false;
+      this.scene.add(this.moonLight);
+
+    
 
       this.earth = new Earth();
       this.scene.add(this.earth.getObject());
+
+      this.stars = new Stars();
+      this.scene.add(this.stars.getObject());
 
       this.water = new WaterObject(this.earth);
       const waterModel = this.water.getObject();
@@ -86,6 +153,29 @@ export class MainScene {
       if (launchPadModel) {
         this.scene.add(launchPadModel);
         this.shuttlePhysics.setLaunchPad(this.launchPad);
+        
+        // ✅ إضافة إضاءة خاصة للحاملة
+        const carrierPosition = this.launchPad.carrierPosition;
+        if (carrierPosition) {
+          this.carrierSpotLight = new THREE.SpotLight(0xffffff, 2.0, Units.toProjectUnits(6000));
+          this.baseCarrierSpotIntensity = 2.0;
+          this.carrierSpotLight.position.set(
+            carrierPosition.x,
+            carrierPosition.y + Units.toProjectUnits(50),
+            carrierPosition.z
+          );
+          this.carrierSpotLight.target.position.copy(carrierPosition);
+          this.carrierSpotLight.angle = Math.PI / 6; // 30 درجة
+          this.carrierSpotLight.penumbra = 0.3;
+          this.carrierSpotLight.castShadow = true;
+          this.carrierSpotLight.shadow.mapSize.width = 1024;
+          this.carrierSpotLight.shadow.mapSize.height = 1024;
+          
+          this.scene.add(this.carrierSpotLight);
+          this.scene.add(this.carrierSpotLight.target);
+          
+          console.log('Added special lighting for carrier');
+        }
       }
 
       this.freeLookCamera = new FreeLookCamera(this.earth);
@@ -129,6 +219,33 @@ export class MainScene {
       this.animate();
     } catch (error) {
       console.error("Error initializing scene:", error);
+    }
+  }
+
+  // ✅ دالة لتغيير خلفية السماء بناءً على الارتفاع
+  updateSkyBackground(altitude) {
+    const transitionAltitude = 50000; // 50km
+    
+    if (altitude >= transitionAltitude && this.currentBackground !== 'space') {
+      // الانتقال إلى خلفية الفضاء
+      this.scene.background = this.spaceBackground;
+      this.currentBackground = 'space';
+      console.log('Switched to space background at altitude:', altitude);
+    } else if (altitude < transitionAltitude) {
+      // تحت 50 كم: نطبق حالة المستخدم (إظهار/إخفاء)
+      if (this.isSkyBackgroundEnabled) {
+        if (this.currentBackground !== 'sky') {
+          this.scene.background = this.skyBackground;
+          this.currentBackground = 'sky';
+          console.log('Switched to sky background at altitude:', altitude);
+        }
+      } else {
+        if (this.currentBackground !== 'none') {
+          this.scene.background = null;
+          this.currentBackground = 'none';
+          console.log('Sky background hidden (manual) at altitude:', altitude);
+        }
+      }
     }
   }
 
@@ -213,6 +330,56 @@ export class MainScene {
       console.log(
         `Simulation speed decreased to: ${this.simulationSpeedFactor}x`
       );
+    } else if (event.code === 'KeyM') {
+      // ✅ التبديل بين إظهار/إخفاء خلفية السماء تحت 50,000
+      const transitionAltitude = 50000;
+      const altitude = this.spaceShuttle ? this.spaceShuttle.getAltitude() : 0;
+      if (altitude < transitionAltitude) {
+        this.isSkyBackgroundEnabled = !this.isSkyBackgroundEnabled;
+        if (this.isSkyBackgroundEnabled) {
+          this.scene.background = this.skyBackground;
+          this.currentBackground = 'sky';
+          console.log('Sky background enabled (manual).');
+          // إطفاء أضواء الحاملة الليلية عند تفعيل ضوء السماء
+          if (this.launchPad && typeof this.launchPad.setNightLightsEnabled === 'function') {
+            this.launchPad.setNightLightsEnabled(false);
+          }
+          // إطفاء ضوء القمر
+          if (this.moonLight) this.moonLight.visible = false;
+          // إعادة شدات الإضاءة النهارية
+          if (this.ambientLight) this.ambientLight.intensity = this.baseAmbientIntensity;
+          if (this.sunLight) this.sunLight.intensity = this.baseSunIntensity;
+          if (this.hemisphereLight) this.hemisphereLight.intensity = this.baseHemisphereIntensity;
+          if (this.carrierSpotLight) this.carrierSpotLight.intensity = this.baseCarrierSpotIntensity;
+          // خفض تأثير البيئة في النهار (تعتمد على السماء أساساً)
+          if (this.scene && this.scene.environment) {
+            // لا يوجد intensity للبيئة على المستوى العالمي، لذا نعدّل مواد الحاملة
+            if (this.launchPad && typeof this.launchPad.setEnvMapIntensity === 'function') {
+              this.launchPad.setEnvMapIntensity(1.0);
+            }
+          }
+        } else {
+          this.scene.background = null;
+          this.currentBackground = 'none';
+          console.log('Sky background disabled (manual).');
+          // تشغيل أضواء الحاملة الليلية عند إطفاء ضوء السماء
+          if (this.launchPad && typeof this.launchPad.setNightLightsEnabled === 'function') {
+            this.launchPad.setNightLightsEnabled(true);
+          }
+          // تشغيل ضوء القمر
+          if (this.moonLight) this.moonLight.visible = true;
+          // ضبط شدات إضاءة ليلية تشبه النهار ولكن أضعف
+          if (this.ambientLight) this.ambientLight.intensity = this.baseAmbientIntensity * 0.45;
+          if (this.sunLight) this.sunLight.intensity = this.baseSunIntensity * 0.35;
+          if (this.hemisphereLight) this.hemisphereLight.intensity = this.baseHemisphereIntensity * 0.5;
+          // تعزيز إضاءة الحاملة ليلاً لتظهر بوضوح
+          if (this.carrierSpotLight) this.carrierSpotLight.intensity = this.baseCarrierSpotIntensity * 2.5;
+          // رفع شدة الانعكاسات البيئية ليلاً لتظهر الألوان
+          if (this.launchPad && typeof this.launchPad.setEnvMapIntensity === 'function') {
+            this.launchPad.setEnvMapIntensity(1.75);
+          }
+        }
+      }
     }
   }
 
@@ -235,12 +402,22 @@ export class MainScene {
       // ✅ حساب زمن المحاكاة المنقضي بناءً على عامل السرعة
       const simulationDeltaTime = visualDeltaTime * this.simulationSpeedFactor;
 
+      // ✅ تحديث خلفية السماء بناءً على ارتفاع المكوك
+      if (this.spaceShuttle && this.spaceShuttle.model) {
+        const altitude = this.spaceShuttle.getAltitude();
+        this.updateSkyBackground(altitude);
+      }
+
       if (this.earth) {
         this.earth.update();
       }
 
       if (this.water) {
         this.water.update();
+      }
+
+      if (this.stars) {
+        this.stars.update(visualDeltaTime);
       }
 
       if (this.launchPad && this.earth && this.earth.getObject()) {
@@ -255,7 +432,7 @@ export class MainScene {
         this.spaceShuttle.update(
           simulationDeltaTime,
           this.simulationSpeedFactor
-        ); // ✅ يجب أن يتم استدعاء دوال render داخل دالة update الخاصة بالمكوك // this.spaceShuttle.renderFuelTankSmokeParticles(this.scene); // this.spaceShuttle.renderSmokeParticles(this.scene);
+        );
       }
 
       if (this.freeLookCamera) {

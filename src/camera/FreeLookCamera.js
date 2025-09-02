@@ -1,206 +1,305 @@
 // src/camera/FreeLookCamera.js
 
-import * as THREE from 'three';
-import { Units } from '../utils/Units';
-import { PhysicsConstants } from '../constants/PhysicsConstants'; // تأكد من استيرادها
+import * as THREE from "three";
+import { Units } from "../utils/Units";
+import { PhysicsConstants } from "../constants/PhysicsConstants"; // تأكد من استيرادها
 
-export class FreeLookCamera { // تم تغيير اسم الكلاس هنا
-    constructor(earth) {
-        this.earth = earth;
-        this.radius = earth.getRadius();
+export class FreeLookCamera {
+  // تم تغيير اسم الكلاس هنا
+  constructor(earth) {
+    this.earth = earth;
+    this.radius = earth.getRadius();
 
-        // Camera settings with our unit system
-        this.height = Units.toProjectUnits(2); // 2 meters height
-        this.speed = Units.toProjectUnits(1); // 1 meters per second
-        this.angle = 0; // Rotation angle around Y axis
-        this.pitch = 0; // Look up/down angle
-        this.roll = 0;  // Side tilt angle
+    // Camera settings with our unit system
+    this.height = Units.toProjectUnits(2); // 2 meters height
+    this.speed = Units.toProjectUnits(1); // 1 meters per second
+    this.angle = 0; // Rotation angle around Y axis
+    this.pitch = 0; // Look up/down angle
+    this.roll = 0; // Side tilt angle
+    // Camera position
+    this.position = new THREE.Vector3(-8, this.radius + this.height, 1);
+    this.lookAt = new THREE.Vector3(0, this.radius + this.height, -1);
 
-        // Camera position
-        this.position = new THREE.Vector3(-8, this.radius + this.height, 1);
-        this.lookAt = new THREE.Vector3(0, this.radius + this.height, -1);
+    // Setup camera with adjusted near and far planes
+    this.camera = new THREE.PerspectiveCamera(
+      45, // FOV
+      window.innerWidth / window.innerHeight, // Aspect ratio
+      0.001, // Near plane - increased to prevent clipping
+      Units.toProjectUnits(PhysicsConstants.EARTH_RADIUS * 100) // Far plane - increased to allow viewing from far away
+    );
+    this.updateCamera();
 
-        // Setup camera with adjusted near and far planes
-        this.camera = new THREE.PerspectiveCamera(
-            45, // FOV
-            window.innerWidth / window.innerHeight, // Aspect ratio
-            0.001, // Near plane - increased to prevent clipping
-            Units.toProjectUnits(PhysicsConstants.EARTH_RADIUS * 100) // Far plane - increased to allow viewing from far away
-        );
-        this.updateCamera();
+    // Setup controls
+    this.setupControls();
 
-        // Setup controls
-        this.setupControls();
+    // Minimum height above Earth's surface
+    this.minHeight = Units.toProjectUnits(0); // 1 meter minimum height
+    this.isEnabled = true; // خاصية جديدة لتفعيل/تعطيل الكاميرا
+  }
 
-        // Minimum height above Earth's surface
-        this.minHeight = Units.toProjectUnits(0); // 1 meter minimum height
-        this.isEnabled = true; // خاصية جديدة لتفعيل/تعطيل الكاميرا
+  setupControls() {
+    this.keys = {};
+    window.addEventListener("keydown", (e) => {
+      if (this.isEnabled) {
+        this.keys[e.key.toLowerCase()] = true;
+
+        // ******** معالجة مباشرة للمفاتيح 3 و 4 *********
+        if (e.key === "3") {
+          this.setCameraAtCarrier();
+          e.preventDefault(); // منع السلوك الافتراضي
+        }
+        if (e.key === "4") {
+          this.setCameraAtHelicopters();
+          e.preventDefault(); // منع السلوك الافتراضي
+        }
+      }
+    });
+    window.addEventListener("keyup", (e) => {
+      if (this.isEnabled) this.keys[e.key.toLowerCase()] = false;
+    });
+  }
+
+  updateCamera() {
+    this.camera.position.copy(this.position);
+
+    const cosPitch = Math.cos(this.pitch);
+    const sinPitch = Math.sin(this.pitch);
+    const cosAngle = Math.cos(this.angle);
+    const sinAngle = Math.sin(this.angle);
+
+    const lookAtPosition = new THREE.Vector3(
+      this.position.x + cosAngle * cosPitch,
+      this.position.y + sinPitch,
+      this.position.z + sinAngle * cosPitch
+    );
+
+    this.camera.lookAt(lookAtPosition);
+  }
+
+  update() {
+    if (!this.isEnabled) return; // لا تقم بالتحديث إذا كانت الكاميرا غير مفعلة
+
+    // Speed control
+    if (this.keys["shift"]) {
+      this.speed = Units.toProjectUnits(300); // 300 m/s
+    } else {
+      this.speed = Units.toProjectUnits(2); // 2 m/s
     }
 
-    setupControls() {
-        this.keys = {};
-        window.addEventListener('keydown', (e) => { if (this.isEnabled) this.keys[e.key.toLowerCase()] = true; });
-        window.addEventListener('keyup', (e) => { if (this.isEnabled) this.keys[e.key.toLowerCase()] = false; });
+    // Forward/Backward movement
+    if (this.keys["w"]) {
+      this.moveForward();
+      console.log(this.position);
+    }
+    if (this.keys["s"]) {
+      this.moveBackward();
     }
 
-    updateCamera() {
-        this.camera.position.copy(this.position);
-
-        const cosPitch = Math.cos(this.pitch);
-        const sinPitch = Math.sin(this.pitch);
-        const cosAngle = Math.cos(this.angle);
-        const sinAngle = Math.sin(this.angle);
-
-        const lookAtPosition = new THREE.Vector3(
-            this.position.x + cosAngle * cosPitch,
-            this.position.y + sinPitch,
-            this.position.z + sinAngle * cosPitch
-        );
-
-        this.camera.lookAt(lookAtPosition);
+    // Left/Right movement
+    if (this.keys["d"]) {
+      this.moveLeft();
+    }
+    if (this.keys["a"]) {
+      this.moveRight();
     }
 
-    update() {
-        if (!this.isEnabled) return; // لا تقم بالتحديث إذا كانت الكاميرا غير مفعلة
-
-        // Speed control
-        if (this.keys['shift']) {
-            this.speed = Units.toProjectUnits(300); // 300 m/s
-        } else {
-            this.speed = Units.toProjectUnits(2); // 2 m/s
-        }
-
-        // Forward/Backward movement
-        if (this.keys['w']) {
-            this.moveForward();
-        }
-        if (this.keys['s']) {
-            this.moveBackward();
-        }
-
-        // Left/Right movement
-        if (this.keys['d']) {
-            this.moveLeft();
-        }
-        if (this.keys['a']) {
-            this.moveRight();
-        }
-
-        // Up/Down movement
-        if (this.keys['q']) {
-            this.moveUp();
-        }
-        if (this.keys['z']) {
-            this.moveDown();
-        }
-
-        // Rotation
-        if (this.keys['arrowright']) {
-            this.angle += 0.04;
-        }
-        if (this.keys['arrowleft']) {
-            this.angle -= 0.04;
-        }
-
-        // Look up/down
-        if (this.keys['arrowup'] && this.pitch + 0.02 < Math.PI / 2) {
-            this.pitch += 0.01;
-        }
-        if (this.keys['arrowdown'] && this.pitch - 0.02 > -Math.PI / 2) {
-            this.pitch -= 0.01;
-        }
-
-        this.updatePositionOnEarth();
-        this.updateCamera();
+    // Up/Down movement
+    if (this.keys["q"]) {
+      this.moveUp();
+    }
+    if (this.keys["z"]) {
+      this.moveDown();
     }
 
-    // (تأكد أن دوال moveForward, moveBackward, moveLeft, moveRight, moveUp, moveDown, updatePositionOnEarth هي نفسها كما في الكود الخاص بك)
-    moveForward() {
-        const cosAngle = Math.cos(this.angle);
-        const sinAngle = Math.sin(this.angle);
-        const cosPitch = Math.cos(this.pitch);
-
-        const newX = this.position.x + cosAngle * cosPitch * this.speed;
-        const newY = this.position.y;
-        const newZ = this.position.z + sinAngle * cosPitch * this.speed;
-
-        this.position.set(newX, newY, newZ);
+    // Rotation
+    if (this.keys["arrowright"]) {
+      this.angle += 0.04;
+      console.log(this.angle);
+    }
+    if (this.keys["arrowleft"]) {
+      this.angle -= 0.04;
     }
 
-    moveBackward() {
-        const cosAngle = Math.cos(this.angle);
-        const sinAngle = Math.sin(this.angle);
-        const cosPitch = Math.cos(this.pitch);
-
-        const newX = this.position.x - cosAngle * cosPitch * this.speed;
-        const newY = this.position.y;
-        const newZ = this.position.z - sinAngle * cosPitch * this.speed;
-
-        this.position.set(newX, newY, newZ);
+    // Look up/down
+    if (this.keys["arrowup"] && this.pitch + 0.02 < Math.PI / 2) {
+      this.pitch += 0.01;
+    }
+    if (this.keys["arrowdown"] && this.pitch - 0.02 > -Math.PI / 2) {
+      this.pitch -= 0.01;
     }
 
-    moveLeft() {
-        const cosAngle = Math.cos(this.angle + Math.PI / 2);
-        const sinAngle = Math.sin(this.angle + Math.PI / 2);
+    // ******** مفاتيح جديدة لمواقع محددة للكاميرا *********
 
-        const newX = this.position.x + cosAngle * this.speed;
-        const newZ = this.position.z + sinAngle * this.speed;
-
-        this.position.set(newX, this.position.y, newZ);
+    // مفتاح 3: نقل الكاميرا إلى الحاملة
+    if (this.keys["3"]) {
+      this.setCameraAtCarrier();
+      // إزالة المفتاح لمنع التكرار
+      this.keys["3"] = false;
     }
 
-    moveRight() {
-        const cosAngle = Math.cos(this.angle + Math.PI / 2);
-        const sinAngle = Math.sin(this.angle + Math.PI / 2);
-
-        const newX = this.position.x - cosAngle * this.speed;
-        const newZ = this.position.z - sinAngle * this.speed;
-
-        this.position.set(newX, this.position.y, newZ);
+    // مفتاح 4: نقل الكاميرا إلى الطائرات المروحية
+    if (this.keys["4"]) {
+      this.setCameraAtHelicopters();
+      // إزالة المفتاح لمنع التكرار
+      this.keys["4"] = false;
     }
 
-    moveUp() {
-        const direction = this.position.clone().normalize();
-        const newHeight = this.height + this.speed;
-        this.height = newHeight;
-        this.position.copy(direction.multiplyScalar(this.radius + this.height));
+    this.updatePositionOnEarth();
+    this.updateCamera();
+  }
+
+  // (تأكد أن دوال moveForward, moveBackward, moveLeft, moveRight, moveUp, moveDown, updatePositionOnEarth هي نفسها كما في الكود الخاص بك)
+  moveForward() {
+    const cosAngle = Math.cos(this.angle);
+    const sinAngle = Math.sin(this.angle);
+    const cosPitch = Math.cos(this.pitch);
+
+    const newX = this.position.x + cosAngle * cosPitch * this.speed;
+    const newY = this.position.y;
+    const newZ = this.position.z + sinAngle * cosPitch * this.speed;
+
+    this.position.set(newX, newY, newZ);
+  }
+
+  moveBackward() {
+    const cosAngle = Math.cos(this.angle);
+    const sinAngle = Math.sin(this.angle);
+    const cosPitch = Math.cos(this.pitch);
+
+    const newX = this.position.x - cosAngle * cosPitch * this.speed;
+    const newY = this.position.y;
+    const newZ = this.position.z - sinAngle * cosPitch * this.speed;
+
+    this.position.set(newX, newY, newZ);
+  }
+
+  moveLeft() {
+    const cosAngle = Math.cos(this.angle + Math.PI / 2);
+    const sinAngle = Math.sin(this.angle + Math.PI / 2);
+
+    const newX = this.position.x + cosAngle * this.speed;
+    const newZ = this.position.z + sinAngle * this.speed;
+
+    this.position.set(newX, this.position.y, newZ);
+  }
+
+  moveRight() {
+    const cosAngle = Math.cos(this.angle + Math.PI / 2);
+    const sinAngle = Math.sin(this.angle + Math.PI / 2);
+
+    const newX = this.position.x - cosAngle * this.speed;
+    const newZ = this.position.z - sinAngle * this.speed;
+
+    this.position.set(newX, this.position.y, newZ);
+  }
+
+  moveUp() {
+    const direction = this.position.clone().normalize();
+    const newHeight = this.height + this.speed;
+    this.height = newHeight;
+    this.position.copy(direction.multiplyScalar(this.radius + this.height));
+  }
+
+  moveDown() {
+    const direction = this.position.clone().normalize();
+    const newHeight = this.height - this.speed;
+
+    if (newHeight > this.minHeight) {
+      this.height = newHeight;
+      this.position.copy(direction.multiplyScalar(this.radius + this.height));
     }
+  }
 
-    moveDown() {
-        const direction = this.position.clone().normalize();
-        const newHeight = this.height - this.speed;
+  updatePositionOnEarth() {
+    const distanceFromCenter = this.position.length();
+    const targetDistance = this.radius + this.height;
 
-        if (newHeight > this.minHeight) {
-            this.height = newHeight;
-            this.position.copy(direction.multiplyScalar(this.radius + this.height));
-        }
+    if (Math.abs(distanceFromCenter - targetDistance) > 0.1) {
+      const direction = this.position.clone().normalize();
+      this.position.copy(direction.multiplyScalar(targetDistance));
     }
+  }
 
-    updatePositionOnEarth() {
-        const distanceFromCenter = this.position.length();
-        const targetDistance = this.radius + this.height;
-
-        if (Math.abs(distanceFromCenter - targetDistance) > 0.1) {
-            const direction = this.position.clone().normalize();
-            this.position.copy(direction.multiplyScalar(targetDistance));
-        }
+  // تمكين/تعطيل الكاميرا (لتعطيل الاستجابة لأزرار لوحة المفاتيح)
+  setEnabled(enabled) {
+    this.isEnabled = enabled;
+    // قم بإعادة تعيين حالة الأزرار لمنع الحركة غير المقصودة بعد التمكين
+    if (!enabled) {
+      this.keys = {};
     }
+  }
 
-    // تمكين/تعطيل الكاميرا (لتعطيل الاستجابة لأزرار لوحة المفاتيح)
-    setEnabled(enabled) {
-        this.isEnabled = enabled;
-        // قم بإعادة تعيين حالة الأزرار لمنع الحركة غير المقصودة بعد التمكين
-        if (!enabled) {
-            this.keys = {};
-        }
-    }
+  onWindowResize() {
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
+  }
 
-    onWindowResize() {
-        this.camera.aspect = window.innerWidth / window.innerHeight;
-        this.camera.updateProjectionMatrix();
-    }
+  getCamera() {
+    return this.camera;
+  }
 
-    getCamera() {
-        return this.camera;
-    }
+  // ******** دوال جديدة لتعيين مواقع محددة للكاميرا *********
+
+  /**
+   * تعيين الكاميرا عند الحاملة
+   */
+  setCameraAtCarrier() {
+    // موقع الحاملة من التعليقات
+    this.position.set(
+      83.68889547484825,
+      318557.08163517993,
+      -1.0096161889540052
+    );
+
+    // زاوية الكاميرا عند الحاملة
+    this.angle = -179.31999999999994;
+    this.pitch = 0; // إعادة تعيين الميلان
+    this.roll = 0; // إعادة تعيين الميلان الجانبي
+
+    // تحديث ارتفاع الكاميرا
+    this.height = this.position.y - this.radius;
+
+    // تحديث الكاميرا
+    this.updateCamera();
+
+    console.log("Camera moved to carrier position");
+    console.log(
+      `Position: (${this.position.x.toFixed(2)}, ${this.position.y.toFixed(
+        2
+      )}, ${this.position.z.toFixed(2)})`
+    );
+    console.log(`Angle: ${THREE.MathUtils.radToDeg(this.angle).toFixed(2)}°`);
+  }
+
+  /**
+   * تعيين الكاميرا عند الطائرات المروحية
+   */
+  setCameraAtHelicopters() {
+    // موقع الطائرات المروحية من التعليقات
+    this.position.set(
+      11.141174909737005,
+      318553.49972730735,
+      6.562154995840432
+    );
+
+    // زاوية الكاميرا عند الطائرات
+    this.angle = -178.60000000000008;
+    this.pitch = 0; // إعادة تعيين الميلان
+    this.roll = 0; // إعادة تعيين الميلان الجانبي
+
+    // تحديث ارتفاع الكاميرا
+    this.height = this.position.y - this.radius;
+
+    // تحديث الكاميرا
+    this.updateCamera();
+
+    console.log("Camera moved to helicopters position");
+    console.log(
+      `Position: (${this.position.x.toFixed(2)}, ${this.position.y.toFixed(
+        2
+      )}, ${this.position.z.toFixed(2)})`
+    );
+    console.log(`Angle: ${THREE.MathUtils.radToDeg(this.angle).toFixed(2)}°`);
+  }
 }
+
