@@ -39,6 +39,20 @@ export class ShuttlePhysics {
         this.launchPad = null;
         this.towerTilted = false;
 
+        this.spinAxis = new THREE.Vector3(0, 0, 0);
+        this.spinQuaternion = new THREE.Quaternion();
+        this.isSpinning = false;
+
+        this.spinSpeedDeg = 90;
+        this.spinTargetAngleRad = 0;
+        this.spinAccumulatedRad = 0; 
+        this.baseQuat = new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(-Math.PI / 2, 0, -Math.PI)
+        );
+
+        this.orientation = new THREE.Quaternion();
+        this.throttle = 1.0;
+
         console.log("ShuttlePhysics Initialized:");
         console.log(`  Initial Position: (${this.position.x.toFixed(0)}, ${this.position.y.toFixed(0)}, ${this.position.z.toFixed(0)}) m (from Earth center)`);
         console.log(`  Initial Altitude: ${(this.position.y - PhysicsConstants.EARTH_RADIUS).toFixed(0)} m`);
@@ -51,10 +65,10 @@ export class ShuttlePhysics {
         newLocal.launchPad = launchPad;
     }
 
-    calculateTotalMass() {
-        let totalMass = this.shuttleDryMass;
+        calculateTotalMass() {
+            let totalMass = this.shuttleDryMass;
 
-        if (this.isFuelTankAttached) {
+            if (this.isFuelTankAttached) {
             let currentEtMass = this.externalTankInitialTotalMass * (this.fuelPercentage / 100);
             totalMass += currentEtMass;
         }
@@ -200,19 +214,14 @@ export class ShuttlePhysics {
             }
             break;
         case ShuttleStages.ORBITAL_INSERTION:
-            // During orbital insertion, provide thrust even after fuel tank detaches
-            // Use OMS thrust as primary and main engines if fuel is available
-            if (this.fuelPercentage > 0) {
-                const ssmeBase = PhysicsConstants.THRUST_MAIN_ENGINES;
-                const ssmeBoost = this.srbDetached ? PhysicsConstants.MAIN_ENGINE_THRUST_BOOST_AFTER_SRB : 1.0;
-                const etBoost = this.etDetached ? PhysicsConstants.MAIN_ENGINE_THRUST_BOOST_AFTER_ET : 1.0;
-                currentThrustMagnitude += ssmeBase * ssmeBoost * etBoost * 0.5; // Reduced thrust for orbital insertion
-            }
-            // OMS thrust for orbital insertion (always available)
-            {
+            if (this.etDetached) {
                 const omsBase = PhysicsConstants.THRUST_OMS;
-                const omsBoost = this.etDetached ? PhysicsConstants.OMS_THRUST_BOOST_AFTER_ET : 1.0;
+                const omsBoost = PhysicsConstants.OMS_THRUST_BOOST_AFTER_ET;
                 currentThrustMagnitude += omsBase * omsBoost;
+            } else {
+                if (this.fuelPercentage > 0) {
+                    currentThrustMagnitude += PhysicsConstants.THRUST_MAIN_ENGINES;
+                }
             }
             break;
         case ShuttleStages.ORBITAL_STABILIZATION:
@@ -252,23 +261,18 @@ export class ShuttlePhysics {
     }
 
     updateTilt(deltaTime) {
-        if(this.stage !== ShuttleStages.IDLE && this.stage !== ShuttleStages.ENGINE_STARTUP) {
-            // Altitude-driven gravity turn: ramp pitch from 0° at 1 km to ~MAX_TURN_ANGLE by 300 km
+        if (this.stage !== ShuttleStages.IDLE && this.stage !== ShuttleStages.ENGINE_STARTUP) {
             const altitude = this.position.y - PhysicsConstants.EARTH_RADIUS;
             if (altitude >= PhysicsConstants.GRAVITY_TURN_START_ALTITUDE) {
-                const startAlt = PhysicsConstants.GRAVITY_TURN_START_ALTITUDE;
-                const endAlt = PhysicsConstants.GRAVITY_TURN_END_ALTITUDE;
-                const t = THREE.MathUtils.clamp((altitude - startAlt) / Math.max(1, (endAlt - startAlt)), 0, 1);
-                this.tiltAngle = PhysicsConstants.INITIAL_TURN_ANGLE + t * (PhysicsConstants.MAX_TURN_ANGLE - PhysicsConstants.INITIAL_TURN_ANGLE);
+            const startAlt = PhysicsConstants.GRAVITY_TURN_START_ALTITUDE;
+            const endAlt   = PhysicsConstants.GRAVITY_TURN_END_ALTITUDE;
+            const t = THREE.MathUtils.clamp((altitude - startAlt) / Math.max(1, (endAlt - startAlt)), 0, 1);
+            this.tiltAngle = THREE.MathUtils.clamp(
+                PhysicsConstants.INITIAL_TURN_ANGLE + t * (PhysicsConstants.MAX_TURN_ANGLE - PhysicsConstants.INITIAL_TURN_ANGLE),
+                0,
+                PhysicsConstants.MAX_TURN_ANGLE
+            );
             }
-
-            // Clamp tilt between 0 and MAX_TURN_ANGLE for safety
-            this.tiltAngle = THREE.MathUtils.clamp(this.tiltAngle, 0, PhysicsConstants.MAX_TURN_ANGLE);
-
-            const quaternion = new THREE.Quaternion();
-            quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), THREE.MathUtils.degToRad(this.tiltAngle));
-
-            this.forwardVector = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion);
         }
     }
 
@@ -304,18 +308,36 @@ export class ShuttlePhysics {
             }
         }
 
+        if (this.stage === ShuttleStages.GRAVITY_TURN || this.stage === ShuttleStages.ATMOSPHERIC_ASCENT) {
+            const tiltQuat = new THREE.Quaternion().setFromAxisAngle(
+                new THREE.Vector3(1, 0, 0),
+                THREE.MathUtils.degToRad(this.tiltAngle || 0)
+            );
+            // Orientation = tilt * spin (same order your model expects)
+            this.orientation.copy(tiltQuat).multiply(this.spinQuaternion);
+        }
+
+        // Thrust axis = shuttle’s local +Y transformed by current orientation
+        this.forwardVector.set(0, 1, 0).applyQuaternion(this.orientation).normalize();
+        this.upVector.copy(this.forwardVector);
+
         const currentThrustMagnitude = this.calculateThrustMagnitude(); 
 
         // During ORBITAL_INSERTION, only allow OMS thrust to add up to target velocity, then stop
         let allowThrust = true;
         if (this.stage === ShuttleStages.ORBITAL_INSERTION) {
             const targetVelocityLEO = PhysicsConstants.ORBITAL_VELOCITY_LEO;
-            if (this.velocity.length() >= targetVelocityLEO) {
+
+            // Only stop thrust when horizontal speed reaches orbital velocity
+            const radialDir = this.position.clone().normalize();
+            const horizontalVel = this.velocity.clone().sub(radialDir.multiplyScalar(this.velocity.dot(radialDir)));
+
+            if (horizontalVel.length() >= targetVelocityLEO) {
                 allowThrust = false;
             }
         }
         if(currentThrustMagnitude > 0 && allowThrust) {
-            const thrustVector = this.forwardVector.clone().multiplyScalar(currentThrustMagnitude);
+            const thrustVector = this.forwardVector.clone().multiplyScalar(currentThrustMagnitude * this.throttle);
             this.force.add(thrustVector);
         }
 
@@ -418,6 +440,25 @@ export class ShuttlePhysics {
         this.updateStage(currentAltitude, deltaTime);
         this.handleComponentDetachment(currentAltitude, this.time, this.velocity.length());
 
+        if (this.isSpinning) {
+            const step = THREE.MathUtils.degToRad(this.spinSpeedDeg) * deltaTime;
+            const remaining = this.spinTargetAngleRad - this.spinAccumulatedRad;
+            const stepClamped = Math.min(step, remaining);
+
+            const spinStepQuaternion = new THREE.Quaternion()
+                .setFromAxisAngle(this.spinAxis, stepClamped);
+
+            this.spinQuaternion.multiply(spinStepQuaternion); // accumulate
+            this.spinAccumulatedRad += stepClamped;
+
+            if (this.spinAccumulatedRad >= this.spinTargetAngleRad - 1e-6) {
+                this.isSpinning = false; // exactly done
+            }
+            // IMPORTANT: don't modify forwardVector here.
+        }
+
+        this.forwardVector.set(0, 1, 0).applyQuaternion(this.orientation).normalize();
+
         console.log(`--- Time: ${this.time.toFixed(2)}s | Stage: ${getStageLabel(this.stage)} ---`);
         console.log(`  Altitude: ${currentAltitude.toFixed(2)} m`);
         console.log(`  Speed: ${this.velocity.length().toFixed(2)} m/s`);
@@ -468,18 +509,43 @@ export class ShuttlePhysics {
                 // Keep current tilt during atmospheric ascent
                 // Stage transition to ORBITAL_INSERTION happens when fuel tank detaches at 113 km
                 break;
-            case ShuttleStages.ORBITAL_INSERTION:
-                // Stop main engines at insertion (handled by thrust logic); move to stabilization
-                const targetAltitudeLEO = PhysicsConstants.LOW_EARTH_ORBIT_ALTITUDE;
+            case ShuttleStages.ORBITAL_INSERTION: {
+                const targetAltitudeLEO = PhysicsConstants.LOW_EARTH_ORBIT_ALTITUDE;  // ✅ define here
                 const targetVelocityLEO = PhysicsConstants.ORBITAL_VELOCITY_LEO;
 
-                if (currentAltitude >= targetAltitudeLEO - 10000 &&
-                    currentAltitude <= targetAltitudeLEO + 10000 &&
-                    Math.abs(velocityMagnitude - targetVelocityLEO) < PhysicsConstants.ORBITAL_VELOCITY_TOLERANCE) {
-                    this.stage = ShuttleStages.ORBITAL_STABILIZATION;
-                    console.log(`Shuttle Stage: ${getStageLabel(this.stage)} at ${this.time.toFixed(2)}s, Alt: ${currentAltitude.toFixed(0)}m, Speed: ${velocityMagnitude.toFixed(0)}m/s`);
+                if (currentAltitude >= targetAltitudeLEO) {
+                    const orbitalSpeed = Math.sqrt(
+                        PhysicsConstants.GRAVITY_CONSTANT * PhysicsConstants.EARTH_MASS /
+                        (PhysicsConstants.EARTH_RADIUS + targetAltitudeLEO)
+                    );
+
+                    const radialDir = this.position.clone().normalize();
+                    let tangentDir = new THREE.Vector3().crossVectors(radialDir, new THREE.Vector3(0, 0, 1));
+
+                    if (tangentDir.lengthSq() < 1e-6) {
+                        tangentDir = new THREE.Vector3().crossVectors(radialDir, new THREE.Vector3(0, 1, 0));
+                    }
+                    tangentDir.normalize();
+
+                    const desiredVelocity = tangentDir.multiplyScalar(orbitalSpeed);
+
+                    // Smooth approach to orbit
+                    const lerpFactor = 0.02;
+                    this.velocity.lerp(desiredVelocity, lerpFactor);
+
+                    // Check conditions before stabilization
+                    const radialVel = this.velocity.dot(radialDir);
+                    const horizontalVel = this.velocity.clone().sub(radialDir.multiplyScalar(radialVel));
+
+                    if (Math.abs(radialVel) < 5 && horizontalVel.length() >= orbitalSpeed * 0.99) {
+                        this.velocity.copy(desiredVelocity);
+                        this.stage = ShuttleStages.ORBITAL_STABILIZATION;
+                        console.log(`Shuttle Stage: ${getStageLabel(this.stage)} at ${this.time.toFixed(2)}s`);
+                    }
                 }
                 break;
+            }
+
             case ShuttleStages.ORBITAL_STABILIZATION:
                 if (this.acceleration.lengthSq() < 0.1 && velocityMagnitude > (PhysicsConstants.ORBITAL_VELOCITY_LEO * 0.9)) {
                     this.stage = ShuttleStages.FREE_SPACE_MOTION;
@@ -521,6 +587,11 @@ export class ShuttlePhysics {
             
             // Immediately transition to ORBITAL_INSERTION stage when fuel tank detaches
             this.stage = ShuttleStages.ORBITAL_INSERTION;
+
+            this.isSpinning = true;
+            this.spinAxis.set(0, 1, 0);
+            this.spinTargetAngleRad = Math.PI;
+            this.spinAccumulatedRad = 0;
             
             console.log(`External Fuel Tank detached at ${currentTime.toFixed(2)}s, Altitude: ${altitude.toFixed(0)}m`);
             console.log(`Stage transition to ORBITAL_INSERTION at ${currentTime.toFixed(2)}s`);

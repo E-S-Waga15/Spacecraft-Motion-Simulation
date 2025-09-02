@@ -72,6 +72,10 @@ export class SpaceShuttle {
         this.detachedParts = [];
         this.gravityConstant = -9.81; // Real-world gravity in m/s^2
 
+        this.keys = {};
+        window.addEventListener("keydown", e => { this.keys[e.code] = true; });
+        window.addEventListener("keyup", e => { this.keys[e.code] = false; });
+
         // New: Threshold for removing detached parts (e.g., 2000 meters below shuttle's detachment point)
         this.DETACHED_PART_FALL_THRESHOLD_METERS = 2000;
     }
@@ -712,12 +716,24 @@ export class SpaceShuttle {
                     this.model.position.copy(physicsPositionInProjectUnits);
                 }
 
-                this.model.rotation.copy(this.initialModelRotation);
-                // Apply pitch tilt around model's local X axis based on physics tiltAngle (inverted)
-                if (this.physics && typeof this.physics.tiltAngle === 'number') {
-                    const pitchRadians = THREE.MathUtils.degToRad(this.physics.tiltAngle);
-                    this.model.rotateX(pitchRadians);
+                // Use physics.orientation if in free-flight stages
+                if (this.physics.stage === ShuttleStages.ORBITAL_STABILIZATION ||
+                    this.physics.stage === ShuttleStages.FREE_SPACE_MOTION || 
+                    this.physics.stage === ShuttleStages.ORBITAL_MANEUVERING) {
+                    this.model.quaternion.copy(this.physics.orientation);
+                } else {
+                    const baseQuat = new THREE.Quaternion().setFromEuler(this.initialModelRotation);
+                    const tiltQuat = new THREE.Quaternion()
+                        .setFromAxisAngle(new THREE.Vector3(1, 0, 0), THREE.MathUtils.degToRad(this.physics.tiltAngle || 0));
+                    const spinQuat = this.physics.spinQuaternion;
+
+                    const finalQuat = baseQuat.clone();
+                    finalQuat.multiply(tiltQuat);
+                    finalQuat.multiply(spinQuat);
+
+                    this.model.quaternion.copy(finalQuat);
                 }
+
 
                 this.mainEngineParticleSystems.forEach(ps => ps.update(deltaTime));
                 this.srbParticleSystems.forEach(ps => ps.update(deltaTime));
@@ -787,6 +803,65 @@ export class SpaceShuttle {
                         break;
                 }
             }
+
+            if (this.physics.stage === ShuttleStages.ORBITAL_STABILIZATION ||
+                this.physics.stage === ShuttleStages.FREE_SPACE_MOTION || 
+                this.physics.stage === ShuttleStages.ORBITAL_MANEUVERING) {
+
+                const rotSpeed = 0.5 * deltaTime; // rad/sec
+                const q = new THREE.Quaternion();
+
+                // Pitch (Up/Down arrows)
+                if (this.keys["ArrowUp"]) {
+                    q.setFromAxisAngle(new THREE.Vector3(1,0,0), rotSpeed);
+                    this.physics.orientation.multiply(q);
+                }
+                if (this.keys["ArrowDown"]) {
+                    q.setFromAxisAngle(new THREE.Vector3(1,0,0), -rotSpeed);
+                    this.physics.orientation.multiply(q);
+                }
+
+                // Yaw (Left/Right arrows)
+                if (this.keys["ArrowLeft"]) {
+                    q.setFromAxisAngle(new THREE.Vector3(0,1,0), rotSpeed);
+                    this.physics.orientation.multiply(q);
+                }
+                if (this.keys["ArrowRight"]) {
+                    q.setFromAxisAngle(new THREE.Vector3(0,1,0), -rotSpeed);
+                    this.physics.orientation.multiply(q);
+                }
+
+                // Roll (A / D keys)
+                if (this.keys["KeyA"]) {
+                    q.setFromAxisAngle(new THREE.Vector3(0,0,1), rotSpeed);
+                    this.physics.orientation.multiply(q);
+                }
+                if (this.keys["KeyD"]) {
+                    q.setFromAxisAngle(new THREE.Vector3(0,0,1), -rotSpeed);
+                    this.physics.orientation.multiply(q);
+                }
+
+                // Throttle control (Shift / Ctrl)
+                if (this.keys["ShiftLeft"] || this.keys["ShiftRight"]) {
+                    this.physics.throttle = Math.min(1, this.physics.throttle + 0.5 * deltaTime);
+                }
+                if (this.keys["ControlLeft"] || this.keys["ControlRight"]) {
+                    this.physics.throttle = Math.max(0, this.physics.throttle - 0.5 * deltaTime);
+                }
+
+                this.physics.throttle = Math.max(0, Math.min(1, this.physics.throttle));
+                if (isNaN(this.physics.throttle)) this.physics.throttle = 0;
+
+                // Velocity vector pointing (Q/E)
+                if (this.keys["KeyQ"] || this.keys["KeyE"]) {
+                    const velDir = this.physics.velocity.clone().normalize();
+                    const axis = new THREE.Vector3().crossVectors(velDir, new THREE.Vector3(0,1,0)).normalize();
+                    const dir = this.keys["KeyQ"] ? +rotSpeed : -rotSpeed;
+                    q.setFromAxisAngle(axis, dir);
+                    this.physics.orientation.multiply(q);
+                }
+            }
+
 
             // ******** Update detached parts' physics and visual state ********
             const gravityProjectUnits = Units.toProjectUnits(this.gravityConstant);

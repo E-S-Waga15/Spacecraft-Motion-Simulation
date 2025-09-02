@@ -19,7 +19,7 @@ export const PhysicsConstants = {
     // تصحيح قيم الدفع بناءً على البيانات الفعلية
     THRUST_MAIN_ENGINES: 3 * 1.75e6, // N (Total for 3 main engines, each approx 1.75MN) = 5.25e6 N
     THRUST_SOLID_ROCKETS: 2 * 14.7e6, // N (Total for 2 SRBs, each approx 14.7MN) = 29.4e6 N
-    THRUST_OMS: 2 * 26e3, // N (Two OMS engines ~26 kN each)
+    THRUST_OMS: 2 * 2600000, // N (Two OMS engines ~26 kN each)
 
     // Thrust scaling factors for specific phases
     MAIN_ENGINE_THRUST_BOOST_AFTER_SRB: 1.2, // Increase SSME thrust after SRB separation
@@ -35,7 +35,7 @@ export const PhysicsConstants = {
     CROSS_SECTIONAL_AREA: 200, // m², Example value, largest cross-section during ascent
 
     // معدل استهلاك الوقود
-    FUEL_CONSUMPTION_RATE: 2500, // kg/s (increased to ensure fuel runs out at 113 km altitude)
+    FUEL_CONSUMPTION_RATE: 4000, // kg/s (increased to ensure fuel runs out at 113 km altitude)
 
     // Orbital mechanics
     LOW_EARTH_ORBIT_ALTITUDE: 300000, // meters (transition to ORBITAL_STABILIZATION at 300 km)
@@ -59,4 +59,8 @@ export const PhysicsConstants = {
     INITIAL_TURN_ANGLE: 0,
     MAX_TURN_ANGLE: 88, // near-horizontal by ~300 km
     TURN_RATE: 0.5,
+
+    ORBITAL_MANEUVERING_THRUST: 27000,
+    OMS_THRUST_BOOST_AFTER_ET: 1.0,
+    HOLD_ORBIT_THRUST: 110000 * 9.81,
 };
