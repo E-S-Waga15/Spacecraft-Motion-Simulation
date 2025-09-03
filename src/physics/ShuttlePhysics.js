@@ -8,8 +8,8 @@ import * as THREE from 'three';
 export class ShuttlePhysics {
     constructor() {
         this.stage = ShuttleStages.IDLE;
-        this.time = 0; // Simulation time in seconds
-        this.engineStartupTimer = 0; // مؤقت لمرحلة بدء المحرك
+        this.time = 0; 
+        this.engineStartupTimer = 0; 
 
         this.position = new THREE.Vector3(0, PhysicsConstants.EARTH_RADIUS, 0);
         this.velocity = new THREE.Vector3();
@@ -53,16 +53,17 @@ export class ShuttlePhysics {
         this.orientation = new THREE.Quaternion();
         this.throttle = 1.0;
         
-        // إضافة متغيرات للمناورات المدارية
-        this.maneuveringThrust = 0; // الدفع الأمامي/الخلفي للمناورات
-        this.lateralThrust = 0; // الدفع الجانبي للمناورات
+      
+        this.maneuveringThrust = 0; 
+        this.lateralThrust = 0; 
         
-        // متغيرات لتتبع وقت دخول المراحل
-        this.stageStartTime = 0; // وقت بداية المرحلة الحالية
+     
+        this.stageStartTime = 0; 
         
-        // متغيرات للزيادة المؤقتة في الدفع
-        this.srbDetachedBoost = 1.0; // زيادة الدفع بعد فصل الصواريخ
-        this.srbDetachedBoostTime = 0; // وقت بداية الزيادة
+
+
+        this.srbDetachedBoost = 1.0; 
+        this.srbDetachedBoostTime = 0; 
 
         console.log("ShuttlePhysics Initialized:");
         console.log(`  Initial Position: (${this.position.x.toFixed(0)}, ${this.position.y.toFixed(0)}, ${this.position.z.toFixed(0)}) m (from Earth center)`);
@@ -147,7 +148,7 @@ export class ShuttlePhysics {
 
         const dragCoefficient = PhysicsConstants.DRAG_COEFFICIENT;
         const crossSectionalArea = PhysicsConstants.CROSS_SECTIONAL_AREA;
-        // Angle-of-attack based effective area: minimal when aligned with velocity, maximal when broadside
+
         let effectiveArea = crossSectionalArea;
         const speedSq = velocity.lengthSq();
         if (speedSq > 0.0001) {
@@ -155,8 +156,8 @@ export class ShuttlePhysics {
             const fwdDir = this.forwardVector.clone().normalize();
             const cosAoA = THREE.MathUtils.clamp(velDir.dot(fwdDir), -1, 1);
             const aoa = Math.acos(cosAoA);
-            const areaScale = Math.sin(aoa); // 0 when aligned, 1 when 90 deg
-            // Keep some baseline frontal area even when aligned
+            const areaScale = Math.sin(aoa); 
+           
             effectiveArea = crossSectionalArea * (0.15 + 0.85 * areaScale);
         }
 
@@ -184,7 +185,7 @@ export class ShuttlePhysics {
             currentThrustMagnitude = PhysicsConstants.THRUST_ENGINE_STARTUP;
             break;
         case ShuttleStages.LIFTOFF:
-            // During liftoff, use base thrust (SRBs provide most of the power)
+           
             if(this.fuelPercentage > 0) {
                 currentThrustMagnitude += PhysicsConstants.THRUST_MAIN_ENGINES;
             }
@@ -198,9 +199,9 @@ export class ShuttlePhysics {
         case ShuttleStages.GRAVITY_TURN: 
             if(this.fuelPercentage > 0) {
                 const ssmeBase = PhysicsConstants.THRUST_MAIN_ENGINES;
-                // Boost after SRB detachment (45 km)
+                
                 let ssmeBoost = this.srbDetached ? PhysicsConstants.MAIN_ENGINE_THRUST_BOOST_AFTER_SRB : 1.0;
-                // إضافة الزيادة المؤقتة بعد فصل الصواريخ
+               
                 if (this.srbDetached && this.srbDetachedBoost > 1.0) {
                     ssmeBoost *= this.srbDetachedBoost;
                 }
@@ -216,15 +217,15 @@ export class ShuttlePhysics {
         case ShuttleStages.ATMOSPHERIC_ASCENT:
             if (this.fuelPercentage > 0) {
                 const ssmeBase = PhysicsConstants.THRUST_MAIN_ENGINES;
-                // Boost after SRB detachment (45 km)
+                
                 let ssmeBoost = this.srbDetached ? PhysicsConstants.MAIN_ENGINE_THRUST_BOOST_AFTER_SRB : 1.0;
-                // إضافة الزيادة المؤقتة بعد فصل الصواريخ
+              
                 if (this.srbDetached && this.srbDetachedBoost > 1.0) {
                     ssmeBoost *= this.srbDetachedBoost;
                 }
                 currentThrustMagnitude += ssmeBase * ssmeBoost;
             }
-            // If any SRB still attached for any reason, include its thrust
+            
             if (this.isRocket1Attached) {
                 currentThrustMagnitude += (PhysicsConstants.THRUST_SOLID_ROCKETS / 2);
             }
@@ -243,18 +244,18 @@ export class ShuttlePhysics {
                 }
             }
             
-            // إضافة دفع المناورات المدارية في مرحلة الدخول في المدار
+           
             if (Math.abs(this.maneuveringThrust) > 0.1) {
                 const maneuveringThrustMagnitude = PhysicsConstants.THRUST_OMS * Math.abs(this.maneuveringThrust);
                 currentThrustMagnitude += maneuveringThrustMagnitude;
             }
             break;
         case ShuttleStages.ORBITAL_STABILIZATION:
-            // No thrust during stabilization
+           
             currentThrustMagnitude = 0;
             break;
         case ShuttleStages.FREE_SPACE_MOTION:
-            // إضافة دفع المناورات المدارية في الحركة الحرة
+           
             if (Math.abs(this.maneuveringThrust) > 0.1) {
                 const maneuveringThrustMagnitude = PhysicsConstants.THRUST_OMS * Math.abs(this.maneuveringThrust);
                 currentThrustMagnitude += maneuveringThrustMagnitude;
@@ -265,21 +266,21 @@ export class ShuttlePhysics {
             }
             break;
         case ShuttleStages.ORBITAL_MANEUVERING:
-            // Full main engine thrust with all boosts for orbital maneuvers
-            // Provide thrust even after fuel tank detaches (using OMS as backup)
+           
+            
             if (this.fuelPercentage > 0) {
                 const ssmeBase = PhysicsConstants.THRUST_MAIN_ENGINES;
                 const ssmeBoost = this.srbDetached ? PhysicsConstants.MAIN_ENGINE_THRUST_BOOST_AFTER_SRB : 1.0;
                 const etBoost = this.etDetached ? PhysicsConstants.MAIN_ENGINE_THRUST_BOOST_AFTER_ET : 1.0;
                 currentThrustMagnitude += ssmeBase * ssmeBoost * etBoost;
             } else if (this.etDetached) {
-                // Use OMS thrust if main engines are out of fuel
+                
                 const omsBase = PhysicsConstants.THRUST_OMS;
                 const omsBoost = PhysicsConstants.OMS_THRUST_BOOST_AFTER_ET;
                 currentThrustMagnitude += omsBase * omsBoost;
             }
             
-            // إضافة دفع المناورات المدارية
+           
             if (Math.abs(this.maneuveringThrust) > 0.1) {
                 const maneuveringThrustMagnitude = PhysicsConstants.THRUST_OMS * Math.abs(this.maneuveringThrust);
                 currentThrustMagnitude += maneuveringThrustMagnitude;
@@ -301,18 +302,18 @@ export class ShuttlePhysics {
         
         let thrustVector = this.forwardVector.clone().multiplyScalar(magnitude);
         
-        // إضافة دفع المناورات المدارية
+       
         if ((this.stage === ShuttleStages.ORBITAL_MANEUVERING || this.stage === ShuttleStages.ORBITAL_INSERTION || this.stage === ShuttleStages.FREE_SPACE_MOTION) && Math.abs(this.maneuveringThrust) > 0.1) {
             const maneuveringThrustMagnitude = PhysicsConstants.THRUST_OMS * Math.abs(this.maneuveringThrust);
             const maneuveringDirection = this.maneuveringThrust > 0 ? 1 : -1;
             thrustVector.add(this.forwardVector.clone().multiplyScalar(maneuveringThrustMagnitude * maneuveringDirection));
         }
         
-        // إضافة الدفع الجانبي
+       
         if ((this.stage === ShuttleStages.ORBITAL_MANEUVERING || this.stage === ShuttleStages.FREE_SPACE_MOTION) && Math.abs(this.lateralThrust) > 0.1) {
             const lateralThrustMagnitude = PhysicsConstants.THRUST_OMS * Math.abs(this.lateralThrust);
             const lateralDirection = this.lateralThrust > 0 ? 1 : -1;
-            // الدفع الجانبي عمودي على الاتجاه الأمامي
+           
             const rightVector = new THREE.Vector3(1, 0, 0).applyQuaternion(this.orientation).normalize();
             thrustVector.add(rightVector.multiplyScalar(lateralThrustMagnitude * lateralDirection));
         }
@@ -346,21 +347,21 @@ export class ShuttlePhysics {
 
         let altitudeAtStartOfStep = this.position.y - PhysicsConstants.EARTH_RADIUS;
 
-        // Apply gravity force in all stages (including orbital insertion)
+        
         const gravityForce = this.calculateGravityForce(this.position);
         this.force.add(gravityForce);
         
-        // في مراحل الفضاء، إضافة قوة جاذبية متوازنة للحفاظ على المدار
+        
         if (this.stage === ShuttleStages.ORBITAL_STABILIZATION || 
             this.stage === ShuttleStages.FREE_SPACE_MOTION || 
             this.stage === ShuttleStages.ORBITAL_MANEUVERING) {
             
-            // حساب القوة الجاذبية المطلوبة للمدار المستقر
+                
             const distance = this.position.length();
             const orbitalSpeed = Math.sqrt(PhysicsConstants.GRAVITY_CONSTANT * PhysicsConstants.EARTH_MASS / distance);
             const requiredCentripetalForce = this.calculateTotalMass() * orbitalSpeed * orbitalSpeed / distance;
             
-            // إضافة قوة جاذبية متوازنة
+          
             const balancedGravityForce = this.position.clone().normalize().multiplyScalar(-requiredCentripetalForce);
             this.force.add(balancedGravityForce);
         }
@@ -372,15 +373,15 @@ export class ShuttlePhysics {
                 this.acceleration.set(0, 0, 0);
                 this.force.add(this.calculateNormalForce());
             }
-        } else { // Handle non-IDLE stages (including ENGINE_STARTUP)
+        } else { 
             if (altitudeAtStartOfStep > 0 && altitudeAtStartOfStep < PhysicsConstants.ATMOSPHERE_HEIGHT) {
                 this.force.add(this.calculateAirResistance(this.velocity, altitudeAtStartOfStep));
             }
-            // Ensure no sinking below ground during ENGINE_STARTUP if it happens
+            
             if (this.stage === ShuttleStages.ENGINE_STARTUP && altitudeAtStartOfStep <= 0) {
                 this.position.setY(PhysicsConstants.EARTH_RADIUS);
-                this.velocity.y = Math.max(0, this.velocity.y); // Prevent downward velocity
-                this.acceleration.y = Math.max(0, this.acceleration.y); // Prevent downward acceleration
+                this.velocity.y = Math.max(0, this.velocity.y); 
+                this.acceleration.y = Math.max(0, this.acceleration.y); 
             }
         }
 
@@ -389,22 +390,22 @@ export class ShuttlePhysics {
                 new THREE.Vector3(1, 0, 0),
                 THREE.MathUtils.degToRad(this.tiltAngle || 0)
             );
-            // Orientation = tilt * spin (same order your model expects)
+           
             this.orientation.copy(tiltQuat).multiply(this.spinQuaternion);
         }
 
-        // Thrust axis = shuttle’s local +Y transformed by current orientation
+       
         this.forwardVector.set(0, 1, 0).applyQuaternion(this.orientation).normalize();
         this.upVector.copy(this.forwardVector);
 
         const currentThrustMagnitude = this.calculateThrustMagnitude(); 
 
-        // During ORBITAL_INSERTION, only allow OMS thrust to add up to target velocity, then stop
+       
         let allowThrust = true;
         if (this.stage === ShuttleStages.ORBITAL_INSERTION) {
             const targetVelocityLEO = PhysicsConstants.ORBITAL_VELOCITY_LEO;
 
-            // Only stop thrust when horizontal speed reaches orbital velocity
+           
             const radialDir = this.position.clone().normalize();
             const horizontalVel = this.velocity.clone().sub(radialDir.multiplyScalar(this.velocity.dot(radialDir)));
 
@@ -415,7 +416,7 @@ export class ShuttlePhysics {
         if(currentThrustMagnitude > 0 && allowThrust) {
             let thrustVector = this.forwardVector.clone().multiplyScalar(currentThrustMagnitude * this.throttle);
             
-            // إضافة دفع المناورات المدارية
+           
             if (this.stage === ShuttleStages.ORBITAL_MANEUVERING || this.stage === ShuttleStages.ORBITAL_INSERTION || this.stage === ShuttleStages.FREE_SPACE_MOTION) {
                 if (Math.abs(this.maneuveringThrust) > 0.1) {
                     const maneuveringThrustMagnitude = PhysicsConstants.THRUST_OMS * Math.abs(this.maneuveringThrust);
@@ -521,25 +522,25 @@ export class ShuttlePhysics {
 
         this.time += deltaTime;
 
-        // تقليل الزيادة المؤقتة في الدفع تدريجياً
+       
         if (this.srbDetachedBoost > 1.0) {
             const timeSinceBoost = this.time - this.srbDetachedBoostTime;
-            if (timeSinceBoost > 10) { // تقليل الزيادة بعد 10 ثواني
+            if (timeSinceBoost > 10) { 
                 this.srbDetachedBoost = Math.max(1.0, this.srbDetachedBoost - 0.1 * deltaTime);
             }
         }
 
-        // إعادة تعيين متغيرات المناورات تدريجياً عند عدم الاستخدام
+
         if (this.stage === ShuttleStages.ORBITAL_MANEUVERING) {
-            // إعادة تعيين تدريجية للمناورات عند عدم الضغط على المفاتيح
+            
             if (Math.abs(this.maneuveringThrust) > 0.01) {
-                this.maneuveringThrust *= 0.95; // تقليل تدريجي
+                this.maneuveringThrust *= 0.95; 
             } else {
                 this.maneuveringThrust = 0;
             }
             
             if (Math.abs(this.lateralThrust) > 0.01) {
-                this.lateralThrust *= 0.95; // تقليل تدريجي
+                    this.lateralThrust *= 0.95; 
             } else {
                 this.lateralThrust = 0;
             }
@@ -565,13 +566,13 @@ export class ShuttlePhysics {
             const spinStepQuaternion = new THREE.Quaternion()
                 .setFromAxisAngle(this.spinAxis, stepClamped);
 
-            this.spinQuaternion.multiply(spinStepQuaternion); // accumulate
+            this.spinQuaternion.multiply(spinStepQuaternion); 
             this.spinAccumulatedRad += stepClamped;
 
             if (this.spinAccumulatedRad >= this.spinTargetAngleRad - 1e-6) {
-                this.isSpinning = false; // exactly done
+                this.isSpinning = false; 
             }
-            // IMPORTANT: don't modify forwardVector here.
+            
         }
 
         this.forwardVector.set(0, 1, 0).applyQuaternion(this.orientation).normalize();
@@ -616,18 +617,18 @@ export class ShuttlePhysics {
                 }
                 break;
             case ShuttleStages.GRAVITY_TURN:
-                // Advance to atmospheric ascent after exiting most of atmosphere
+                
                 if (currentAltitude >= PhysicsConstants.ATMOSPHERE_HEIGHT * 0.5) {
                     this.stage = ShuttleStages.ATMOSPHERIC_ASCENT;
                     console.log(`Shuttle Stage: ${getStageLabel(this.stage)} at ${currentAltitude.toFixed(0)}m`);
                 }
                 break;
             case ShuttleStages.ATMOSPHERIC_ASCENT:
-                // Keep current tilt during atmospheric ascent
-                // Stage transition to ORBITAL_INSERTION happens when fuel tank detaches at 113 km
+                
+               
                 break;
             case ShuttleStages.ORBITAL_INSERTION: {
-                const targetAltitudeLEO = PhysicsConstants.LOW_EARTH_ORBIT_ALTITUDE;  // ✅ define here
+                const targetAltitudeLEO = PhysicsConstants.LOW_EARTH_ORBIT_ALTITUDE;  
                 const targetVelocityLEO = PhysicsConstants.ORBITAL_VELOCITY_LEO;
 
                 if (currentAltitude >= targetAltitudeLEO) {
@@ -646,15 +647,15 @@ export class ShuttlePhysics {
 
                     const desiredVelocity = tangentDir.multiplyScalar(orbitalSpeed);
 
-                    // Smooth approach to orbit
+                   
                     const lerpFactor = 0.02;
                     this.velocity.lerp(desiredVelocity, lerpFactor);
 
-                    // Check conditions before stabilization - شروط أكثر مرونة
+                  
                     const radialVel = this.velocity.dot(radialDir);
                     const horizontalVel = this.velocity.clone().sub(radialDir.multiplyScalar(radialVel));
 
-                    // شروط أكثر مرونة للانتقال إلى الاستقرار المداري
+                   
                     if (Math.abs(radialVel) < 50 && horizontalVel.length() >= orbitalSpeed * 0.8) {
                         this.velocity.copy(desiredVelocity);
                         this.stage = ShuttleStages.ORBITAL_STABILIZATION;
@@ -662,11 +663,11 @@ export class ShuttlePhysics {
                         console.log(`Radial Velocity: ${radialVel.toFixed(2)} m/s, Horizontal Speed: ${horizontalVel.length().toFixed(2)} m/s`);
                     }
                 } else {
-                    // إضافة انتقال تلقائي بعد وقت معين في مرحلة ORBITAL_INSERTION
+
                     const timeInInsertion = this.time - this.stageStartTime;
-                    if (timeInInsertion > 30) { // بعد 30 ثانية من بدء ORBITAL_INSERTION
+                    if (timeInInsertion > 30) { 
                         this.stage = ShuttleStages.ORBITAL_STABILIZATION;
-                        this.stageStartTime = this.time; // تحديث وقت بداية المرحلة الجديدة
+                        this.stageStartTime = this.time; 
                         console.log(`Shuttle Stage: ${getStageLabel(this.stage)} - Auto transition after 30s in insertion`);
                     }
                 }
@@ -674,29 +675,28 @@ export class ShuttlePhysics {
             }
 
             case ShuttleStages.ORBITAL_STABILIZATION:
-                // الانتقال إلى الحركة الحرة في الفضاء بعد الاستقرار
-                // شروط أكثر مرونة للانتقال
+                
                 if (this.acceleration.lengthSq() < 1.0 && velocityMagnitude > (PhysicsConstants.ORBITAL_VELOCITY_LEO * 0.7)) {
                     this.stage = ShuttleStages.FREE_SPACE_MOTION;
                     console.log(`Shuttle Stage: ${getStageLabel(this.stage)} at ${this.time.toFixed(2)}s`);
                 }
-                // إضافة انتقال تلقائي بعد وقت معين
+
                 const timeInStabilization = this.time - this.stageStartTime;
-                if (timeInStabilization > 20) { // بعد 20 ثانية من الاستقرار
+                if (timeInStabilization > 20) { 
                     this.stage = ShuttleStages.FREE_SPACE_MOTION;
-                    this.stageStartTime = this.time; // تحديث وقت بداية المرحلة الجديدة
+                    this.stageStartTime = this.time; 
                     console.log(`Shuttle Stage: ${getStageLabel(this.stage)} - Auto transition after 20s in stabilization`);
                 }
                 break;
             case ShuttleStages.FREE_SPACE_MOTION:
-                // الانتقال إلى المناورات المدارية عند استخدام الدفع
+               
                 if (this.calculateThrustMagnitude() > 0 || Math.abs(this.maneuveringThrust) > 0.1 || Math.abs(this.lateralThrust) > 0.1) {
                     this.stage = ShuttleStages.ORBITAL_MANEUVERING;
                     console.log(`Shuttle Stage: ${getStageLabel(this.stage)} at ${this.time.toFixed(2)}s`);
                 }
                 break;
             case ShuttleStages.ORBITAL_MANEUVERING:
-                // العودة إلى الحركة الحرة عند توقف الدفع
+               
                 if (this.calculateThrustMagnitude() === 0 && Math.abs(this.maneuveringThrust) < 0.1 && Math.abs(this.lateralThrust) < 0.1) {
                     this.stage = ShuttleStages.FREE_SPACE_MOTION;
                     console.log(`Shuttle Stage: ${getStageLabel(this.stage)} at ${this.time.toFixed(2)}s`);
@@ -706,7 +706,7 @@ export class ShuttlePhysics {
     }
 
     handleComponentDetachment(altitude, currentTime) {
-        // SRB detachment: ONLY check altitude (45 km)
+        
         if (!this.srbDetached && this.isRocket1Attached &&
             altitude >= PhysicsConstants.SRB_DETACH_ALTITUDE) {
 
@@ -714,11 +714,10 @@ export class ShuttlePhysics {
             this.detachComponent('rocket2');
             this.srbDetached = true;
             
-            // زيادة دفع المحركات الرئيسية بعد فصل الصواريخ لتجنب تعليق الحركة
+                
             if (this.fuelPercentage > 0) {
-                // زيادة مؤقتة في الدفع لتعويض فقدان الصواريخ
-                this.srbDetachedBoost = 1.5; // زيادة 50% في الدفع
-                this.srbDetachedBoostTime = this.time; // تسجيل وقت بداية الزيادة
+                this.srbDetachedBoost = 1.5; 
+                this.srbDetachedBoostTime = this.time; 
                 console.log(`SRBs detached at ${currentTime.toFixed(2)}s, Altitude: ${altitude.toFixed(0)}m - Applying boost to main engines`);
             }
         }
@@ -726,7 +725,7 @@ export class ShuttlePhysics {
         if (!this.etDetached && this.isFuelTankAttached &&
             altitude >= PhysicsConstants.FUEL_TANK_DETACH_ALTITUDE) {
 
-            // بدء الدوران قبل فصل الفول تانك
+          
             if (!this.isSpinning) {
                 this.isSpinning = true;
                 this.spinAxis.set(0, 1, 0);
@@ -735,13 +734,13 @@ export class ShuttlePhysics {
                 console.log(`Starting rotation before fuel tank detachment at ${currentTime.toFixed(2)}s`);
             }
             
-            // فصل الفول تانك بعد الدوران
+           
             if (this.spinAccumulatedRad >= this.spinTargetAngleRad * 0.8) { // فصل عند 80% من الدوران
                 this.detachComponent('fuelTank');
-                this.fuelPercentage = 0; // ET fuel depleted by detachment altitude
+                this.fuelPercentage = 0; 
                 this.etDetached = true;
                 
-                // Immediately transition to ORBITAL_INSERTION stage when fuel tank detaches
+              
                 this.stage = ShuttleStages.ORBITAL_INSERTION;
                 this.stageStartTime = this.time;
                 
@@ -753,20 +752,20 @@ export class ShuttlePhysics {
 
     setStage(stage) {
         this.stage = stage;
-        this.stageStartTime = this.time; // تحديث وقت بداية المرحلة
+        this.stageStartTime = this.time; 
         
         if (stage === ShuttleStages.ENGINE_STARTUP) {
             this.engineStartupTimer = 0;
-            this.towerTilted = false; // إعادة تعيين علامة الميلان عند بدء مرحلة جديدة
+            this.towerTilted = false; 
             this.tiltLocked = false;
         } else if (stage === ShuttleStages.IDLE) {
-            this.towerTilted = false; // إعادة تعيين العلامة عند العودة إلى السكون
+            this.towerTilted = false; 
             this.tiltLocked = false;
-            // إعادة تعيين متغيرات المناورات
+          
             this.maneuveringThrust = 0;
             this.lateralThrust = 0;
         } else if (stage === ShuttleStages.FREE_SPACE_MOTION) {
-            // إعادة تعيين متغيرات المناورات عند الدخول في الحركة الحرة
+           
             this.maneuveringThrust = 0;
             this.lateralThrust = 0;
         }

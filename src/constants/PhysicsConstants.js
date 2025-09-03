@@ -52,7 +52,7 @@ export const PhysicsConstants = {
     FUEL_TANK_DETACH_FUEL_PERCENT: 5, // % fuel remaining at detachment
 
     // مرحلة بدء تشغيل المحرك
-    ENGINE_STARTUP_DURATION: 5, // seconds (مدة مرحلة بدء المحرك قبل الإقلاع الفعلي)
+    ENGINE_STARTUP_DURATION: 15, // seconds (مدة مرحلة بدء المحرك قبل الإقلاع الفعلي)
 
     GRAVITY_TURN_START_ALTITUDE: 1000,
     GRAVITY_TURN_END_ALTITUDE: 300000, // Extend gravity turn until 300 km

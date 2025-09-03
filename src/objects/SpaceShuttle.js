@@ -32,7 +32,7 @@ export class SpaceShuttle {
         this.srbParticleSystems = [];
         this.smokeParticleSystem = [];
 
-        // علامة جديدة لتتبع حالة الفصل المرئي
+       
         this.srbSeparated = false;
 
         this.rocketDetachmentAnimation = {
@@ -70,13 +70,13 @@ export class SpaceShuttle {
             explosionParticles: []
         };
         this.detachedParts = [];
-        this.gravityConstant = -9.81; // Real-world gravity in m/s^2
+        this.gravityConstant = -9.81; 
 
         this.keys = {};
         window.addEventListener("keydown", e => { this.keys[e.code] = true; });
         window.addEventListener("keyup", e => { this.keys[e.code] = false; });
 
-        // New: Threshold for removing detached parts (e.g., 2000 meters below shuttle's detachment point)
+        
         this.DETACHED_PART_FALL_THRESHOLD_METERS = 2000;
     }
 
@@ -669,14 +669,14 @@ export class SpaceShuttle {
     }
 
     /**
-     * Detaches a given part from the main shuttle model and adds it to the scene
+     * 
      * with an initial velocity and angular velocity to simulate falling.
      * @param {THREE.Object3D} part - The Three.js object to detach (e.g., this.rocket1, this.fuelTank).
      * @param {number} [initialPushX=0] - Initial push along the X-axis (in meters/second).
      * @param {number} [initialPushY=-1] - Initial push along the Y-axis (in meters/second, negative for downwards).
      * @param {number} [initialPushZ=0] - Initial push along the Z-axis (in meters/second).
      */
-    detachPart(part, initialPushX = 0, initialPushY = -1, initialPushZ = 0) { // Default initialY changed to -1 for slower fall
+    detachPart(part, initialPushX = 0, initialPushY = -1, initialPushZ = 0) { 
         if (!part || !part.parent) {
             console.warn('Cannot detach part: part is null or has no parent.');
             return;
@@ -692,7 +692,7 @@ export class SpaceShuttle {
                 this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(false));
                 this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
                 this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
-                // Clear detached parts if we return to idle
+                
                 this.detachedParts.forEach(part => this.scene.remove(part.model));
                 this.detachedParts = [];
             } else {
@@ -708,7 +708,7 @@ export class SpaceShuttle {
                     this.physics.stage === ShuttleStages.ENGINE_STARTUP ||
                     this.physics.stage === ShuttleStages.LIFTOFF
                 ) {
-                    // Pin X/Z only during pad and immediate liftoff; allow horizontal motion afterwards
+                    
                     this.model.position.x = this.initialModelPosition.x;
                     this.model.position.y = physicsPositionInProjectUnits.y;
                     this.model.position.z = this.initialModelPosition.z;
@@ -716,7 +716,7 @@ export class SpaceShuttle {
                     this.model.position.copy(physicsPositionInProjectUnits);
                 }
 
-                // Use physics.orientation if in free-flight stages
+                
                 if (this.physics.stage === ShuttleStages.ORBITAL_STABILIZATION ||
                     this.physics.stage === ShuttleStages.FREE_SPACE_MOTION || 
                     this.physics.stage === ShuttleStages.ORBITAL_MANEUVERING) {
@@ -744,27 +744,27 @@ export class SpaceShuttle {
                 this.updateFuelTankDetachmentAnimation(deltaTime);
                 this.updateFuelTankSmokeParticles(deltaTime);
 
-                // Start SRB detachment animation immediately when physics flag is set
+                
                 if (this.physics.srbDetached && !this.srbSeparated) {
                     this.startRocketDetachmentAnimation('rocket1');
                     this.startRocketDetachmentAnimation('rocket2');
                     this.srbParticleSystems.forEach(ps => ps.setVisibility(false));
-                    this.srbSeparated = true; // Set flag to prevent re-triggering
+                    this.srbSeparated = true; 
                     console.log("Visual: Starting SRB detachment animation (physics flag).");
                     
-                    // تفعيل تأثير الكاميرا عند فصل الصواريخ
+
                     if (this.camera && this.camera.triggerDetachmentEffect) {
                         this.camera.triggerDetachmentEffect();
                     }
                 }
 
 
-                // Ensure ET detachment visuals start immediately when physics flags detachment
+                
                 if (this.physics.etDetached && this.fuelTank && this.fuelTank.parent && !this.fuelTankDetachmentAnimation.isDetaching) {
                     this.startFuelTankDetachmentAnimation();
                     console.log("Visual: Starting fuel tank detachment animation (physics flag).");
                     
-                    // تفعيل تأثير الكاميرا عند فصل الفول تانك
+                    
                     if (this.camera && this.camera.triggerDetachmentEffect) {
                         this.camera.triggerDetachmentEffect();
                     }
@@ -779,20 +779,20 @@ export class SpaceShuttle {
                         break;
                     case ShuttleStages.LIFTOFF:
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(this.physics.fuelPercentage > 0));
-                        // The SRB effects will be turned off when the detachment happens, so we keep this here.
+                       
                         this.srbParticleSystems.forEach(ps => ps.setVisibility(true));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
                         this.playSounds(false);
                         this.playSoundsLunch(true);
                         break;
                     case ShuttleStages.ATMOSPHERIC_ASCENT:
-                        // Removed the old, buggy detachment logic from here
+                       
                         this.mainEngineParticleSystems.forEach(ps => ps.setVisibility(this.physics.fuelPercentage > 0));
                         this.smokeParticleSystem.forEach(ps => ps.setVisibility(false));
                         break;
                     case ShuttleStages.ORBITAL_INSERTION:
-                        // Keep engine fire visible during orbital insertion even after fuel tank detaches
-                        // إظهار تأثيرات المحرك عند وجود دفع
+                       
+                      
                         const hasInsertionThrust = this.physics.calculateThrustMagnitude() > 0 || 
                                                 Math.abs(this.physics.maneuveringThrust) > 0.1;
                         
@@ -808,7 +808,7 @@ export class SpaceShuttle {
                         this.playSoundsLunch(false);
                         break;
                     case ShuttleStages.FREE_SPACE_MOTION:
-                        // إظهار تأثيرات المحرك عند وجود دفع في الحركة الحرة
+                      
                         const hasFreeSpaceThrust = Math.abs(this.physics.maneuveringThrust) > 0.1 || 
                                                 Math.abs(this.physics.lateralThrust) > 0.1;
                         
@@ -818,8 +818,8 @@ export class SpaceShuttle {
                         this.playSoundsLunch(hasFreeSpaceThrust);
                         break;
                     case ShuttleStages.ORBITAL_MANEUVERING:
-                        // Show engine fire during orbital maneuvering even after fuel tank detaches
-                        // إظهار تأثيرات المحرك فقط عند وجود دفع
+                        
+                       
                         const hasThrust = this.physics.calculateThrustMagnitude() > 0 || 
                                         Math.abs(this.physics.maneuveringThrust) > 0.1 || 
                                         Math.abs(this.physics.lateralThrust) > 0.1;
@@ -832,16 +832,16 @@ export class SpaceShuttle {
                 }
             }
 
-            // التحكم في المناورات المدارية - متاح في جميع مراحل الفضاء
+           
             if (this.physics.stage === ShuttleStages.ORBITAL_STABILIZATION ||
                 this.physics.stage === ShuttleStages.FREE_SPACE_MOTION || 
                 this.physics.stage === ShuttleStages.ORBITAL_MANEUVERING ||
                 this.physics.stage === ShuttleStages.ORBITAL_INSERTION) {
 
-                const rotSpeed = 1.0 * deltaTime; // زيادة سرعة الدوران
+                const rotSpeed = 1.0 * deltaTime; 
                 const q = new THREE.Quaternion();
 
-                // Pitch (Up/Down arrows) - التحكم في الميلان
+               
                 if (this.keys["ArrowUp"]) {
                     q.setFromAxisAngle(new THREE.Vector3(1,0,0), rotSpeed);
                     this.physics.orientation.multiply(q);
@@ -851,7 +851,7 @@ export class SpaceShuttle {
                     this.physics.orientation.multiply(q);
                 }
 
-                // Yaw (Left/Right arrows) - التحكم في الانحراف
+              
                 if (this.keys["ArrowLeft"]) {
                     q.setFromAxisAngle(new THREE.Vector3(0,1,0), rotSpeed);
                     this.physics.orientation.multiply(q);
@@ -861,7 +861,7 @@ export class SpaceShuttle {
                     this.physics.orientation.multiply(q);
                 }
 
-                // Roll (A / D keys) - التحكم في الدوران
+              
                 if (this.keys["KeyA"]) {
                     q.setFromAxisAngle(new THREE.Vector3(0,0,1), rotSpeed);
                     this.physics.orientation.multiply(q);
@@ -871,7 +871,7 @@ export class SpaceShuttle {
                     this.physics.orientation.multiply(q);
                 }
 
-                // Throttle control (Shift / Ctrl) - التحكم في قوة الدفع
+               
                 if (this.keys["ShiftLeft"] || this.keys["ShiftRight"]) {
                     this.physics.throttle = Math.min(1, this.physics.throttle + 1.0 * deltaTime);
                 }
@@ -882,7 +882,7 @@ export class SpaceShuttle {
                 this.physics.throttle = Math.max(0, Math.min(1, this.physics.throttle));
                 if (isNaN(this.physics.throttle)) this.physics.throttle = 0;
 
-                // Velocity vector pointing (Q/E) - توجيه نحو متجه السرعة
+               
                 if (this.keys["KeyQ"] || this.keys["KeyE"]) {
                     const velDir = this.physics.velocity.clone().normalize();
                     const axis = new THREE.Vector3().crossVectors(velDir, new THREE.Vector3(0,1,0)).normalize();
@@ -891,17 +891,17 @@ export class SpaceShuttle {
                     this.physics.orientation.multiply(q);
                 }
 
-                // إضافة تحكم في الدفع (W/S) للمناورات المدارية
+                
                 if (this.keys["KeyW"]) {
-                    // تفعيل الدفع للأمام
+                   
                     this.physics.maneuveringThrust = Math.min(1, (this.physics.maneuveringThrust || 0) + 1.0 * deltaTime);
                 }
                 if (this.keys["KeyS"]) {
-                    // تفعيل الدفع للخلف
+                   
                     this.physics.maneuveringThrust = Math.max(-1, (this.physics.maneuveringThrust || 0) - 1.0 * deltaTime);
                 }
 
-                // إضافة تحكم في الدفع الجانبي (Z/X)
+                
                 if (this.keys["KeyZ"]) {
                     this.physics.lateralThrust = Math.min(1, (this.physics.lateralThrust || 0) + 1.0 * deltaTime);
                 }
@@ -911,39 +911,39 @@ export class SpaceShuttle {
             }
 
 
-            // ******** Update detached parts' physics and visual state ********
+            
             const gravityProjectUnits = Units.toProjectUnits(this.gravityConstant);
             const thresholdProjectUnits = Units.toProjectUnits(this.DETACHED_PART_FALL_THRESHOLD_METERS);
 
             for (let i = this.detachedParts.length - 1; i >= 0; i--) {
                 const part = this.detachedParts[i];
 
-                // Apply gravity to vertical velocity (slowed down for visual e
+                
 
-                // Apply gravity to vertical velocity (slowed down for visual effect)
-                part.velocity.y += (gravityProjectUnits * 0.1) * deltaTime; // Gravity reduced to 10% for slower fall
+                
+                part.velocity.y += (gravityProjectUnits * 0.1) * deltaTime; 
 
-                // Apply velocity to position
+                
                 part.model.position.addScaledVector(part.velocity, deltaTime);
 
-                // Apply angular velocity to rotation
+                
                 part.model.rotation.x += part.angularVelocity.x;
                 part.model.rotation.y += part.angularVelocity.y;
                 part.model.rotation.z += part.angularVelocity.z;
 
-                // Remove part if it has fallen sufficiently far below its detachment point
+                
                 if (part.initialWorldYPosition - part.model.position.y > thresholdProjectUnits) {
                     this.scene.remove(part.model);
-                    this._disposeThreeObject(part.model); // Custom disposal function
-                    this.detachedParts.splice(i, 1); // Remove from array
+                    this._disposeThreeObject(part.model); 
+                    this.detachedParts.splice(i, 1); 
                     console.log(`Detached part removed from scene (fell past threshold): ${part.model.name || 'Unnamed Part'}`);
                 }
             }
-            // **********************************************************************
+            
         }
     }
 
-    // Helper function to safely dispose of Three.js object resources
+    
     _disposeThreeObject(object) {
         if (!object) return;
 
@@ -956,13 +956,13 @@ export class SpaceShuttle {
                             material.dispose();
                             if (material.map) material.map.dispose();
                             if (material.normalMap) material.normalMap.dispose();
-                            // Dispose other textures if applicable (e.g., roughnessMap, metalnessMap)
+                            
                         });
                     } else {
                         child.material.dispose();
                         if (child.material.map) child.material.map.dispose();
                         if (child.material.normalMap) child.material.normalMap.dispose();
-                        // Dispose other textures if applicable
+                        
                     }
                 }
             }
@@ -974,15 +974,15 @@ export class SpaceShuttle {
         this.srbParticleSystems.forEach(ps => ps.dispose());
         this.smokeParticleSystem.forEach(ps => ps.dispose());
 
-        // Dispose detached parts that might still be in the scene
+        
         this.detachedParts.forEach(part => {
             this.scene.remove(part.model);
             this._disposeThreeObject(part.model);
         });
-        this.detachedParts = []; // Clear the array
+        this.detachedParts = []; 
 
         if (this.model) {
-            this._disposeThreeObject(this.model); // Dispose the main shuttle model
+            this._disposeThreeObject(this.model); 
             if (this.model.parent) {
                 this.model.parent.remove(this.model);
             }
